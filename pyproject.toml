@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wcps"
+version = "0.0.1"
+authors = [
+  { name="Dimitar Misev", email="misev@rasdaman.com" },
+]
+description = "Python client library for WCPS (OGC Web Coverage Processing Service) backends."
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
+    "Operating System :: OS Independent",
+    "Development Status :: 2 - Pre-Alpha",
+    "Topic :: Database :: Front-Ends",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Topic :: Software Development :: Libraries",
+]
+keywords = ["wcps", "rasdaman", "ogc", "gis", "Web Coverage Processing Service"]
+dependencies = ["requests"]
+
+[project.urls]
+Homepage = "https://github.com/rasdaman/wcps-python-client"
+Issues = "https://github.com/rasdaman/wcps-python-client/issues"
+
+[project.optional-dependencies]
+docs = [
+    "sphinx-autoapi",  # Sphinx AutoAPI for documentation
+    "sphinx",
+    "recommonmark",    # Allows to directly include the README.md
+]
