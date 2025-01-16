@@ -29,19 +29,24 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.viewcode',
     'autoapi.extension',
-    'recommonmark'
+    'recommonmark',
+    'sphinx.ext.intersphinx',
 ]
 autosummary_generate = True  # Turn on sphinx.ext.autosummary
 autoclass_content = "both"  # Add __init__ doc (ie. params) to class summaries
 html_show_sourcelink = False  # Remove 'view source code' from top of page (for html, not python)
 autodoc_inherit_docstrings = False  # If no docstring, inherit from base class
 autodoc_typehints = 'description'
-add_module_names = False # Remove namespaces from class/method signatures
+add_module_names = False  # Remove namespaces from class/method signatures
+intersphinx_mapping = {
+    'requests': ('https://docs.python-requests.org/en/latest/', None),
+    'python': ('https://docs.python.org/3', None),
+}
 
 autoapi_dirs = ['../wcps']
 autoapi_options = ['members', 'undoc-members', 'show-inheritance', 'show-module-summary']
 autoapi_python_class_content = 'both'
-autoapi_keep_files = True # Helps with debugging
+autoapi_keep_files = True  # Helps with debugging
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', '.venv']

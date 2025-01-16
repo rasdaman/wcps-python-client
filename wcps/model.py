@@ -16,8 +16,8 @@ that can be sent to a WCPS server.
 from __future__ import annotations
 
 from collections import deque
-from typing import Union, Optional
 from enum import StrEnum
+from typing import Union, Optional
 
 
 class WCPSExpr:
@@ -48,20 +48,23 @@ class WCPSExpr:
         Scalar operands such as 1, 4.9 or "test" are automatically wrapped in a :class:`Scalar` object.
     """
 
-    def __init__(self, operands: OperandType | list[OperandType]):
-        self.parent = None
+    def __init__(self, operands: Optional[OperandType | list[OperandType]] = None):
+        self.parent: WCPSExpr = None
         """
         A :class:`WCPSExpr` of which this expression is an operand; ``None`` if this is the root expression.
         E.g. in if this expression is the :class:`Datacube` object in ``Datacube("test") * 5``,
         then the ``parent`` is the :class:`Mul` object.
         """
-        self.operands = []
+        self.operands: list[WCPSExpr] = []
         """
         A list of :class:`WCPSExpr` operands of this expressions. E.g. in ``Datacube("test") * 5``, this
         expression is a :class:`Mul`, with :class:`Datacube` and :class:`Scalar` operands.
         """
-        for op in operands:
-            self.add_operand(op)
+        if operands is not None:
+            if not isinstance(operands, list):
+                operands = [operands]
+            for op in operands:
+                self.add_operand(op)
 
     def get_datacube_operands(self) -> list[Datacube]:
         """
@@ -90,8 +93,11 @@ class WCPSExpr:
         if op is not None:
             if isinstance(op, WCPSExpr):
                 self.operands.append(op)
-            else:
+            elif isinstance(op, ScalarType):
                 self.operands.append(Scalar(op))
+            else:
+                raise WCPSClientException(f"Invalid operand type {op.__class__}, "
+                                          f"expected a WCPSExpr or a scalar value.")
             self.operands[-1].parent = self
 
     def __str__(self):
@@ -106,7 +112,8 @@ class WCPSExpr:
             raise WCPSClientException("No datacubes have been specified.")
         datacubes = [f'{d} in ({d.name})' for d in datacubes]
         datacubes_str = ', '.join(datacubes)
-        return f'for {datacubes_str}\nreturn\n  '
+        ret = f'for {datacubes_str}\nreturn\n  '
+        return ret
 
     # arithmetic
 
@@ -1258,7 +1265,7 @@ class Datacube(WCPSExpr):
         """
         :param name: the datacube (coverage) name.
         """
-        super().__init__(operands=[])
+        super().__init__()
         self.name = name
 
     def __str__(self):
@@ -1274,7 +1281,7 @@ class Scalar(WCPSExpr):
     """
 
     def __init__(self, op: ScalarType):
-        super().__init__(operands=[])
+        super().__init__()
         self.op = op
 
     def __str__(self):
@@ -1909,7 +1916,7 @@ class Axis(WCPSExpr):
 
     @staticmethod
     def get_axis_list(axes: Union[Axis, slice, tuple[Axis], AxisTuple, tuple[AxisTuple],
-                                  tuple[slice], list[Axis], list[AxisTuple]]) -> list[Axis]:
+    tuple[slice], list[Axis], list[AxisTuple]]) -> list[Axis]:
         """
         Normalizes ``axes`` into a list of Axis objects.
         :param axes: may be:
@@ -1961,9 +1968,7 @@ class Subset(WCPSExpr):
     """
 
     def __init__(self, op: WCPSExpr, axes):
-        operands = [op]
-        operands += Axis.get_axis_list(axes)
-        super().__init__(operands=operands)
+        super().__init__(operands=[op] + Axis.get_axis_list(axes))
 
     def __str__(self):
         axis_subsets = [str(op) for op in self.operands[1:]]
@@ -2393,7 +2398,7 @@ class AxisIter(WCPSExpr):
     """
 
     def __init__(self, var_name: str, axis_name: str):
-        super().__init__(operands=[])
+        super().__init__()
         self.var_name = var_name
         """unique iterator variable name"""
         self.axis_name = axis_name
@@ -2413,7 +2418,7 @@ class AxisIter(WCPSExpr):
         """
         self.low = low
         self.high = high
-        return self.parent if self.parent is not None else self
+        return self
 
     def of_grid_axis(self, cov_expr: WCPSExpr):
         """
@@ -2421,7 +2426,7 @@ class AxisIter(WCPSExpr):
         """
         self.grid_axis = cov_expr
         self.add_operand(cov_expr)
-        return self.parent if self.parent is not None else self
+        return self
 
     def of_geo_axis(self, cov_expr: WCPSExpr):
         """
@@ -2429,7 +2434,7 @@ class AxisIter(WCPSExpr):
         """
         self.geo_axis = cov_expr
         self.add_operand(cov_expr)
-        return self.parent if self.parent is not None else self
+        return self
 
     def ref(self) -> AxisIterRef:
         """
@@ -2446,7 +2451,7 @@ class AxisIter(WCPSExpr):
             iter_spec = f'imageCrsDomain({self.grid_axis}, {self.axis_name})'
         elif self.geo_axis is not None:
             iter_spec = f'domain({self.geo_axis}, {self.axis_name})'
-        return f'{self.var_name} {self.axis_name}({iter_spec})'
+        return f'${self.var_name} {self.axis_name}({iter_spec})'
 
 
 class AxisIterRef(WCPSExpr):
@@ -2456,11 +2461,11 @@ class AxisIterRef(WCPSExpr):
     """
 
     def __init__(self, iter_var: AxisIter):
-        super().__init__(operands=[])
+        super().__init__()
         self.iter_var = iter_var
 
     def __str__(self):
-        return self.iter_var.var_name
+        return f'${self.iter_var.var_name}'
 
 
 class Condense(WCPSExpr):
@@ -2556,7 +2561,7 @@ class Condense(WCPSExpr):
         self.add_operand(iter_var)
         return self
 
-    def using(self, using) -> Condense:
+    def using(self, using: WCPSExpr) -> Condense:
         """
         Specify an aggregation expression, evaluated for each point in the :meth:`over`
         domain and aggregated into the final result with the :attr:`condense_op`.
@@ -2565,7 +2570,7 @@ class Condense(WCPSExpr):
         self.add_operand(using)
         return self
 
-    def where(self, where) -> Condense:
+    def where(self, where: WCPSExpr) -> Condense:
         """
         Specify a filtering expression, evaluated for each point in the :meth:`over`
         domain. If its result is false at that point then the :meth:`using` expression
@@ -2701,7 +2706,7 @@ class Switch(WCPSExpr):
     """
 
     def __init__(self):
-        super().__init__(operands=[])
+        super().__init__()
         self.case_expr: list[WCPSExpr] = []
         self.then_expr: list[WCPSExpr] = []
         self.default_expr = None

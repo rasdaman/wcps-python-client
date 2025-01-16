@@ -35,11 +35,14 @@ query = vegetation.encode("PNG")
 service = Service("https://ows.rasdaman.org/rasdaman/ows")
 
 # execute the query on the server and get back the response
-response = service.execute(query)
+result = service.execute(query)
+
+# similar to above, but automatically convert the PNG result 
+# to a numpy array
+result = service.execute(query, convert_to_numpy=True)
 
 # alternatively, save the content of the response into a file
-response = service.execute(query,
-                           output_file='vegetation.png')
+service.download(query, output_file='vegetation.png')
 ```
 
 We can calculate the average NDVI as follows:
@@ -52,9 +55,31 @@ ndvi = (cov.nir - cov.red) / (cov.nir + cov.red)
 query = ndvi.avg()
 
 service = ...
-response = service.execute(query)
+result = service.execute(query)
 
-print(f'The average NDVI is {response.content}')
+print(f'The average NDVI is {result.value}')
+```
+
+A more advanced expression is the general condenser (aggregation)
+operation. The example calculates the maximum values across all time slices 
+from a 3D datacube between "2015-01-01" and "2015-07-01" for which the
+average is greater than 20:
+
+```python
+from wcps.model import Datacube, AxisIter, Condense, CondenseOp
+from wcps.service import Service
+
+cov = Datacube("AvgTemperatureColorScaled")
+ansi_iter = (AxisIter("ansi_iter", "ansi")
+             .of_geo_axis(cov["ansi" : "2015-01-01" : "2015-07-01"]))
+max_map = (Condense(CondenseOp.MAX)
+           .over(ansi_iter)
+           .where(cov["ansi": ansi_iter.ref()].avg() > 20)
+           .using(cov["ansi": ansi_iter.ref()]))
+query = max_map.encode("PNG")
+
+service = Service("https://ows.rasdaman.org/rasdaman/ows")
+service.download(query, 'max_map.png')
 ```
 
 # Contributing
@@ -67,9 +92,12 @@ The directory structure is as follows:
 
 ## Tests
 
-To run the tests execute:
+To run the tests:
 
 ```
+# install dependencies
+pip install wcps[tests]
+
 pytest
 ```
 
@@ -78,7 +106,7 @@ pytest
 To build the documentation:
 
 ```
-# install needed dependencies
+# install dependencies
 pip install wcps[docs]
 
 cd docs

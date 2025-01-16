@@ -23,7 +23,8 @@ keywords = ["wcps", "rasdaman", "ogc", "gis", "Web Coverage Processing Service"]
 dependencies = ["requests"]
 
 [project.urls]
-Homepage = "https://github.com/rasdaman/wcps-python-client"
+Documentation = "https://rasdaman.github.io/wcps-python-client/"
+Source = "https://github.com/rasdaman/wcps-python-client"
 Issues = "https://github.com/rasdaman/wcps-python-client/issues"
 
 [project.optional-dependencies]
@@ -31,6 +32,12 @@ docs = [
     "sphinx-autoapi",  # Sphinx AutoAPI for documentation
     "sphinx",
     "recommonmark",    # Allows to directly include the README.md
+]
+tests = [
+    "pytest",
+    "numpy",
+    "Pillow",
+    "netCDF4",
 ]
 
 [build-system]
