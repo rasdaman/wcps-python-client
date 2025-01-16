@@ -1,10 +1,6 @@
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "wcps"
-version = "0.0.1"
+dynamic = ["version"]
 authors = [
   { name="Dimitar Misev", email="misev@rasdaman.com" },
 ]
@@ -37,10 +33,19 @@ docs = [
     "recommonmark",    # Allows to directly include the README.md
 ]
 
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["wcps*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.setuptools.dynamic]
+version = {attr = "wcps.__version__"}
 
 [tool.pylint.'MESSAGES CONTROL']
 max-line-length = 120
