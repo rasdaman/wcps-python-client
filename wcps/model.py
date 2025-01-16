@@ -1212,7 +1212,7 @@ class WCPSExpr:
 
         ```
         cov = Datacube("testcube")
-        pt_var = IterVar('$pt', 'time').of_grid_axis(cov)
+        pt_var = AxisIter('$pt', 'time').of_grid_axis(cov)
         pt_ref = pt_var.ref()
         cov.condense(CondenseOp.PLUS).over(pt_var).where().where(cov["time", pt_ref] > 100).using(cov["time", pt_ref])
         ```
@@ -2340,13 +2340,13 @@ class CondenseOp:
     OVERLAY = 'overlay'
 
 
-class IterVar(WCPSExpr):
+class AxisIter(WCPSExpr):
     """
     An axis iterator expression set in a :meth:`Condense.over` or a :meth:`Coverage.over` methods.
     The iteration can be over an integer grid :meth:`interval`, :meth:`of_grid_axis` domain
     of a particular coverage, or :meth:`of_of_geo_axis` domain of a coverage.
 
-    The :meth:`ref` method should be used to get a reference to an :class:`IterVar` that
+    The :meth:`ref` method should be used to get a reference to an :class:`AxisIter` that
     can be used in expressions for the :meth:`Condense.where`, :meth:`Condense.using`, or
     :meth:`Coverage.values` clauses.
 
@@ -2355,9 +2355,9 @@ class IterVar(WCPSExpr):
 
     Examples:
 
-    - ``IterVar('$x', 'X').interval(0, 100)`` - iterate from 0 to 100, inclusive
-    - ``IterVar('$pt', 'time').of_grid_axis(Datacube("timeseries"))``
-    - ``IterVar('$plat', 'Lat').of_geo_axis(Datacube("cov"))``
+    - ``AxisIter('$x', 'X').interval(0, 100)`` - iterate from 0 to 100, inclusive
+    - ``AxisIter('$pt', 'time').of_grid_axis(Datacube("timeseries"))``
+    - ``AxisIter('$plat', 'Lat').of_geo_axis(Datacube("cov"))``
     """
 
     def __init__(self, var_name: str, axis_name: str):
@@ -2399,12 +2399,12 @@ class IterVar(WCPSExpr):
         self.add_operand(cov_expr)
         return self.parent if self.parent is not None else self
 
-    def ref(self) -> IterVarRef:
+    def ref(self) -> AxisIterRef:
         """
         :return: a reference object that can be used in expressions set in the
             :meth:`Condense.where`, :meth:`Condense.using`, or :meth:`Coverage.values` methods.
         """
-        return IterVarRef(self)
+        return AxisIterRef(self)
 
     def __str__(self):
         iter_spec = ''
@@ -2417,13 +2417,13 @@ class IterVar(WCPSExpr):
         return f'{self.var_name} {self.axis_name}({iter_spec})'
 
 
-class IterVarRef(WCPSExpr):
+class AxisIterRef(WCPSExpr):
     """
-    Reference to an :class:`IterVar` object, to be used in expressions set in the
+    Reference to an :class:`AxisIter` object, to be used in expressions set in the
         :meth:`Condense.where`, :meth:`Condense.using`, or :meth:`Coverage.values` methods.
     """
 
-    def __init__(self, iter_var: IterVar):
+    def __init__(self, iter_var: AxisIter):
         super().__init__(operands=[])
         self.iter_var = iter_var
 
@@ -2434,7 +2434,7 @@ class IterVarRef(WCPSExpr):
 class Condense(WCPSExpr):
     """
     A general coverage condense (aggregation) operation. It aggregates values :meth:`over`
-    an iteration domain formed of a list of :class:`IterVar`, with a condenser operation
+    an iteration domain formed of a list of :class:`AxisIter`, with a condenser operation
     (one of ``+``, ``*``, ``max``, ``min``, ``and``, or ``or``). For each coordinate in
     the iteration domain defined by the over clause, the :meth:`using` expression is
     evaluated and added to the final aggregated result; the optional :meth:`where` expression
@@ -2447,9 +2447,9 @@ class Condense(WCPSExpr):
         [ where boolScalarExpr ]
         using scalarExpr
 
-    Typically, the iterator variable iterates through a grid domain (:meth:`IterVar.interval` or
-    :meth:`IterVar.of_grid_axis`). However, iteration over a geo domain is also supported
-    with :meth:`IterVar.of_geo_axis`.
+    Typically, the iterator variable iterates through a grid domain (:meth:`AxisIter.interval` or
+    :meth:`AxisIter.of_grid_axis`). However, iteration over a geo domain is also supported
+    with :meth:`AxisIter.of_geo_axis`.
 
     :param condense_op: one of the :class:`CondenseOp` constants, e.g. :const:`CondenseOp.PLUS`
     :param over: a list of axis iterators
@@ -2459,7 +2459,7 @@ class Condense(WCPSExpr):
     For example, to sum the values of a coverage ``mycov`` (same as using the :class:`Sum` shorthand): ::
 
         cov = Datacube("mycov")
-        pt_var = IterVar('$pt', 'time').of_grid_axis(cov)
+        pt_var = AxisIter('$pt', 'time').of_grid_axis(cov)
         pt_ref = pt_var.ref()
         Condense(CondenseOp.PLUS)
             .over(pt_var)
@@ -2478,7 +2478,7 @@ class Condense(WCPSExpr):
         """
         self.iter_vars = over if over is not None else []
         """
-        A list of :class:`IterVar` forming the iteration domain for aggregation.
+        A list of :class:`AxisIter` forming the iteration domain for aggregation.
         """
         self.using_clause = using
         self.where_where = where
@@ -2505,7 +2505,7 @@ class Condense(WCPSExpr):
         if self.using_clause is None:
             raise WCPSClientException("A USING clause is mandatory in a CONDENSE operation, none was specified.")
 
-    def over(self, iter_var: IterVar) -> Condense:
+    def over(self, iter_var: AxisIter) -> Condense:
         """
         Add an iterator variable to a `Condense` or a `Coverage` operand.
         Calling this method on another object type will raise a `WCPSClientException`.
@@ -2516,8 +2516,8 @@ class Condense(WCPSExpr):
         Examples: ::
 
             cov = Datacube("testcube")
-            pt_var = IterVar('$pt', 'time').of_grid_axis(cov)
-            px_var = IterVar('$px', 'X').interval(0, 100)
+            pt_var = AxisIter('$pt', 'time').of_grid_axis(cov)
+            px_var = AxisIter('$px', 'X').interval(0, 100)
             cov.condense(CondenseOp.PLUS).over(pt_var).over(px_var)
         """
         self.iter_vars.append(iter_var)
@@ -2556,9 +2556,9 @@ class Coverage(WCPSExpr):
         over $iterVar axis(lo:hi), ...
         values scalarExpr
 
-    Typically, the iterator variable iterates through a grid domain (:meth:`IterVar.interval` or
-    :meth:`IterVar.of_grid_axis`). However, iteration over a geo domain is also supported
-    with :meth:`IterVar.of_geo_axis`.
+    Typically, the iterator variable iterates through a grid domain (:meth:`AxisIter.interval` or
+    :meth:`AxisIter.of_grid_axis`). However, iteration over a geo domain is also supported
+    with :meth:`AxisIter.of_geo_axis`.
 
     :param name: a name for the new coverage
     :param over: a list of axis iterators
@@ -2568,9 +2568,9 @@ class Coverage(WCPSExpr):
     Lat and Lon axes, based on an existing geo-referenced coverage ``mycov``: ::
 
         cov = Datacube("mycov")
-        plat_var = IterVar('$pLat', 'Lat')
+        plat_var = AxisIter('$pLat', 'Lat')
                         .of_geo_axis(cov['Lat', -30, -28.5])
-        plon_var = IterVar('$pLon', 'Lon')
+        plon_var = AxisIter('$pLon', 'Lon')
                         .of_geo_axis(cov['Lon', 111.975, 113.475])
         Coverage("copy_of_mycov")
             .over(plat_var).over(plon_var)
@@ -2589,7 +2589,7 @@ class Coverage(WCPSExpr):
         """
         self.iter_vars = over if over is not None else []
         """
-        A list of :class:`IterVar` forming the created coverage domain.
+        A list of :class:`AxisIter` forming the created coverage domain.
         """
         self.values_clause = values_clause
         """
@@ -2616,7 +2616,7 @@ class Coverage(WCPSExpr):
         if self.values_clause is None:
             raise WCPSClientException("A VALUES clause is mandatory in a COVERAGE operation, none was specified.")
 
-    def over(self, iter_var: IterVar) -> Coverage:
+    def over(self, iter_var: AxisIter) -> Coverage:
         """
         Add an iterator variable to the coverage constructor.
 
@@ -2626,8 +2626,8 @@ class Coverage(WCPSExpr):
         Examples: ::
 
             cov = Datacube("testcube")
-            pt_var = IterVar('$pt', 'time').of_grid_axis(cov)
-            px_var = IterVar('$px', 'X').interval(0, 100)
+            pt_var = AxisIter('$pt', 'time').of_grid_axis(cov)
+            px_var = AxisIter('$px', 'X').interval(0, 100)
             cov.condense(CondenseOp.PLUS).over(pt_var).over(px_var)
         """
         self.iter_vars.append(iter_var)

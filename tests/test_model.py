@@ -126,20 +126,20 @@ def test_reduce():
     assert str(Some(cov1)) == "for $cov1 in (cov1)\nreturn\n  some($cov1)"
 
 def test_condense():
-    pt_var = IterVar('$pt', 'time').of_grid_axis(cov1)
+    pt_var = AxisIter('$pt', 'time').of_grid_axis(cov1)
     pt_ref = pt_var.ref()
     assert str(Condense(CondenseOp.PLUS).over(pt_var).using(cov1 + pt_ref)) == \
            "for $cov1 in (cov1)\nreturn\n  (condense + over $pt time(imageCrsDomain($cov1, time)) using ($cov1 + $pt))"
     assert str(Condense(CondenseOp.PLUS).over(pt_var).using(cov1[('time', pt_ref)])) == \
            "for $cov1 in (cov1)\nreturn\n  (condense + over $pt time(imageCrsDomain($cov1, time)) using $cov1[time($pt)])"
-    px_var = IterVar('$px', 'X').of_geo_axis(cov1)
+    px_var = AxisIter('$px', 'X').of_geo_axis(cov1)
     px_ref = px_var.ref()
     assert str(Condense(CondenseOp.MULTIPLY).over(pt_var).over(px_var).using(cov1[('time', pt_ref)] * px_ref)) == \
            "for $cov1 in (cov1)\nreturn\n  (condense * over $pt time(imageCrsDomain($cov1, time)), $px X(domain($cov1, X)) using ($cov1[time($pt)] * $px))"
 
 def test_coverage():
-    plat_var = IterVar('$pLat', 'Lat').of_geo_axis(cov1['Lat', -30, -28.5])
-    plon_var = IterVar('$pLon', 'Lon').of_geo_axis(cov1['Lon', 111.975, 113.475])
+    plat_var = AxisIter('$pLat', 'Lat').of_geo_axis(cov1['Lat', -30, -28.5])
+    plon_var = AxisIter('$pLon', 'Lon').of_geo_axis(cov1['Lon', 111.975, 113.475])
     cov_expr = (Coverage('targetCoverage')
                 .over(plat_var).over(plon_var)
                 .values(cov1[('Lat', plat_var.ref()), ('Lon', plon_var.ref())]))
