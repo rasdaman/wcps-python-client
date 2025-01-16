@@ -1,9 +1,14 @@
 import math
 
-from wcps.model import *
+from wcps.model import (Datacube, Exp, Log, Ln, Sqrt, Pow, Sin, Cos, Tan,
+                        Sinh, Cosh, Tanh, ArcSin, ArcCos, ArcTan, ArcTan2, And,
+                        Or, Xor, Not, Overlay, Bit, Band, MultiBand, Axis, Extend, Scale,
+                        Reproject, ResampleAlg, Cast, CastType, Sum, Avg, Count, Min, Max,
+                        All, Some, AxisIter, Condense, CondenseOp, Coverage, Switch, Encode)
 
 cov1 = Datacube("cov1")
 cov2 = Datacube("cov2")
+
 
 def test_arithmetic():
     assert str(cov1 + cov2) == "for $cov1 in (cov1), $cov2 in (cov2)\nreturn\n  ($cov1 + $cov2)"
@@ -20,6 +25,7 @@ def test_arithmetic():
     assert str(math.floor(cov1)) == "for $cov1 in (cov1)\nreturn\n  floor($cov1)"
     assert str(math.ceil(cov1)) == "for $cov1 in (cov1)\nreturn\n  ceil($cov1)"
 
+
 def test_exponential():
     assert str(Exp(cov1)) == "for $cov1 in (cov1)\nreturn\n  exp($cov1)"
     assert str(Log(cov1)) == "for $cov1 in (cov1)\nreturn\n  log($cov1)"
@@ -28,6 +34,7 @@ def test_exponential():
     assert str(Pow(cov1, cov2)) == "for $cov1 in (cov1), $cov2 in (cov2)\nreturn\n  pow($cov1, $cov2)"
     assert str(Pow(cov1, 2)) == "for $cov1 in (cov1)\nreturn\n  pow($cov1, 2)"
     assert str(Pow(2, cov1)) == "for $cov1 in (cov1)\nreturn\n  pow(2, $cov1)"
+
 
 def test_trigonometric():
     assert str(Sin(cov1)) == "for $cov1 in (cov1)\nreturn\n  sin($cov1)"
@@ -42,6 +49,7 @@ def test_trigonometric():
     assert str(ArcTan(cov1)) == "for $cov1 in (cov1)\nreturn\n  arctan($cov1)"
     assert str(ArcTan2(cov1)) == "for $cov1 in (cov1)\nreturn\n  arctan2($cov1)"
 
+
 def test_comparison():
     assert str(cov1 > cov2) == "for $cov1 in (cov1), $cov2 in (cov2)\nreturn\n  ($cov1 > $cov2)"
     assert str(cov1 > 1) == "for $cov1 in (cov1)\nreturn\n  ($cov1 > 1)"
@@ -52,6 +60,7 @@ def test_comparison():
     assert str(cov1 == cov2) == "for $cov1 in (cov1), $cov2 in (cov2)\nreturn\n  ($cov1 = $cov2)"
     assert str(cov1 != cov2) == "for $cov1 in (cov1), $cov2 in (cov2)\nreturn\n  ($cov1 != $cov2)"
 
+
 def test_logical():
     assert str(And(cov1, cov2)) == "for $cov1 in (cov1), $cov2 in (cov2)\nreturn\n  ($cov1 and $cov2)"
     assert str(Or(cov1, cov2)) == "for $cov1 in (cov1), $cov2 in (cov2)\nreturn\n  ($cov1 or $cov2)"
@@ -60,6 +69,7 @@ def test_logical():
     assert str(Overlay(cov1, cov2)) == "for $cov1 in (cov1), $cov2 in (cov2)\nreturn\n  ($cov1 overlay $cov2)"
     assert str(Bit(cov1, 2)) == "for $cov1 in (cov1)\nreturn\n  bit($cov1, 2)"
 
+
 def test_multiband():
     assert str(Band(cov1, 2)) == "for $cov1 in (cov1)\nreturn\n  $cov1.2"
     assert str(Band(cov1, "red")) == "for $cov1 in (cov1)\nreturn\n  $cov1.red"
@@ -67,6 +77,7 @@ def test_multiband():
            'for $cov1 in (cov1), $cov2 in (cov2)\nreturn\n  {red: $cov1; blue: $cov2}'
     assert str(MultiBand({"red": cov1, "blue": 2})) == \
            'for $cov1 in (cov1)\nreturn\n  {red: $cov1; blue: 2}'
+
 
 def test_subsetting():
     assert str(Axis("X", 15, crs="EPSG:4326")) == 'X:"EPSG:4326"(15)'
@@ -88,9 +99,11 @@ def test_subsetting():
     assert str(cov1[("X", 15.0, 30.0), ("Y", 15.0, 30.0, 'EPSG:4326')]) == \
            'for $cov1 in (cov1)\nreturn\n  $cov1[X(15.0:30.0), Y:"EPSG:4326"(15.0:30.0)]'
 
+
 def test_extend():
     assert str(Extend(cov1, [("X", 15.0, 30.0), ("Y", 15.0, 30.0, 'EPSG:4326')])) == \
            'for $cov1 in (cov1)\nreturn\n  extend($cov1, { X(15.0:30.0), Y:"EPSG:4326"(15.0:30.0) })'
+
 
 def test_scale():
     assert str(Scale(cov1).to_explicit_grid_domain([("X", 15, 30), ("Y", 20, 40)])) == \
@@ -102,6 +115,7 @@ def test_scale():
     assert str(Scale(cov1).by_factor_per_axis([("X", 1.5), ("Y", 2)])) == \
            'for $cov1 in (cov1)\nreturn\n  scale($cov1, { X(1.5), Y(2) })'
 
+
 def test_reproject():
     assert str(Reproject(cov1, "EPSG:4326", ResampleAlg.AVERAGE)) == \
            'for $cov1 in (cov1)\nreturn\n  crsTransform($cov1, "EPSG:4326", { average })'
@@ -112,9 +126,11 @@ def test_reproject():
     assert str(Reproject(cov1, "EPSG:4326").subset_by_axes([("X", 1.5, 2.5), ("Y", 2, 4)])) == \
            'for $cov1 in (cov1)\nreturn\n  crsTransform($cov1, "EPSG:4326", { X(1.5:2.5), Y(2:4) })'
 
+
 def test_cast():
     assert str(Cast(cov1, CastType.INT)) == "for $cov1 in (cov1)\nreturn\n  ((int) $cov1)"
     assert str(Cast(cov1, CastType.UNSIGNED_CHAR)) == "for $cov1 in (cov1)\nreturn\n  ((unsigned char) $cov1)"
+
 
 def test_reduce():
     assert str(Sum(cov1)) == "for $cov1 in (cov1)\nreturn\n  sum($cov1)"
@@ -125,17 +141,23 @@ def test_reduce():
     assert str(All(cov1)) == "for $cov1 in (cov1)\nreturn\n  all($cov1)"
     assert str(Some(cov1)) == "for $cov1 in (cov1)\nreturn\n  some($cov1)"
 
+
 def test_condense():
     pt_var = AxisIter('$pt', 'time').of_grid_axis(cov1)
     pt_ref = pt_var.ref()
     assert str(Condense(CondenseOp.PLUS).over(pt_var).using(cov1 + pt_ref)) == \
-           "for $cov1 in (cov1)\nreturn\n  (condense + over $pt time(imageCrsDomain($cov1, time)) using ($cov1 + $pt))"
+           ("for $cov1 in (cov1)\nreturn\n  "
+            "(condense + over $pt time(imageCrsDomain($cov1, time)) using ($cov1 + $pt))")
     assert str(Condense(CondenseOp.PLUS).over(pt_var).using(cov1[('time', pt_ref)])) == \
-           "for $cov1 in (cov1)\nreturn\n  (condense + over $pt time(imageCrsDomain($cov1, time)) using $cov1[time($pt)])"
+           ("for $cov1 in (cov1)\nreturn\n  "
+            "(condense + over $pt time(imageCrsDomain($cov1, time)) using $cov1[time($pt)])")
     px_var = AxisIter('$px', 'X').of_geo_axis(cov1)
     px_ref = px_var.ref()
     assert str(Condense(CondenseOp.MULTIPLY).over(pt_var).over(px_var).using(cov1[('time', pt_ref)] * px_ref)) == \
-           "for $cov1 in (cov1)\nreturn\n  (condense * over $pt time(imageCrsDomain($cov1, time)), $px X(domain($cov1, X)) using ($cov1[time($pt)] * $px))"
+           ("for $cov1 in (cov1)\nreturn\n  "
+            "(condense * over $pt time(imageCrsDomain($cov1, time)), $px X(domain($cov1, X)) "
+            "using ($cov1[time($pt)] * $px))")
+
 
 def test_coverage():
     plat_var = AxisIter('$pLat', 'Lat').of_geo_axis(cov1['Lat', -30, -28.5])
@@ -150,9 +172,11 @@ def test_coverage():
             "$pLon Lon(domain($cov1[Lon(111.975:113.475)], Lon)) "
             "values $cov1[Lat($pLat), Lon($pLon)])")
 
+
 def test_switch():
     assert str(Switch().case(cov1 > 5).then(cov2).default(cov1)) == \
-           'for $cov1 in (cov1), $cov2 in (cov2)\nreturn\n  (switch case ($cov1 > 5) return $cov2 default return $cov1)'
+           ('for $cov1 in (cov1), $cov2 in (cov2)\nreturn\n  '
+            '(switch case ($cov1 > 5) return $cov2 default return $cov1)')
 
     assert str(Encode(cov1, "PNG")) == 'for $cov1 in (cov1)\nreturn\n  encode($cov1, "PNG")'
     assert str(Encode(cov1, "PNG", "params")) == \

@@ -16,13 +16,8 @@ that can be sent to a WCPS server.
 from __future__ import annotations
 
 from collections import deque
-
-type BoundType = [int, float, str, WCPSExpr]
-"""A type representing axis bounds (in subsetting, extend, scale, etc)."""
-type ScalarType = [int, float, str, bool]
-"""Scalar values can be of one of these types."""
-type OperandType = WCPSExpr | ScalarType
-"""Type of operands of WCPS expressions."""
+from typing import Union, Optional
+from enum import StrEnum
 
 
 class WCPSExpr:
@@ -53,7 +48,7 @@ class WCPSExpr:
         Scalar operands such as 1, 4.9 or "test" are automatically wrapped in a :class:`Scalar` object.
     """
 
-    def __init__(self, operands: OperandType):
+    def __init__(self, operands: OperandType | list[OperandType]):
         self.parent = None
         """
         A :class:`WCPSExpr` of which this expression is an operand; ``None`` if this is the root expression.
@@ -103,15 +98,15 @@ class WCPSExpr:
         """
         :return: A WCPS query string corresponding to this expression.
         """
-        if self.parent is None:
-            datacubes = self.get_datacube_operands()
-            if len(datacubes) == 0:
-                raise WCPSClientException("No datacubes have been specified.")
-            datacubes = [f'{d} in ({d.name})' for d in datacubes]
-            datacubes_str = ', '.join(datacubes)
-            return f'for {datacubes_str}\nreturn\n  '
-        else:
+        if self.parent is not None:
             return ''
+
+        datacubes = self.get_datacube_operands()
+        if len(datacubes) == 0:
+            raise WCPSClientException("No datacubes have been specified.")
+        datacubes = [f'{d} in ({d.name})' for d in datacubes]
+        datacubes_str = ', '.join(datacubes)
+        return f'for {datacubes_str}\nreturn\n  '
 
     # arithmetic
 
@@ -1056,7 +1051,8 @@ class WCPSExpr:
         nones = sum(1 for item in [grid_axes, another_coverage, single_factor, axis_factors]
                     if item is None)
         if nones != 3:
-            raise WCPSClientException(f"scale expects exactly 1 parameter to be specified, but {4 - nones} were specified.")
+            raise WCPSClientException(f"scale expects exactly 1 parameter to be specified, "
+                                      f"but {4 - nones} were specified.")
         if grid_axes is not None:
             return Scale(self).to_explicit_grid_domain(grid_axes)
         if another_coverage is not None:
@@ -1065,6 +1061,8 @@ class WCPSExpr:
             return Scale(self).by_factor(single_factor)
         if axis_factors is not None:
             return Scale(self).by_factor_per_axis(axis_factors)
+
+        raise WCPSClientException("Invalid parameters specified to scale method.")
 
     # reproject
 
@@ -1084,7 +1082,7 @@ class WCPSExpr:
         1. ``cov.reproject("EPSG:4326")``
         2. ``cov.reproject("EPSG:4326", interpolation_method=ResampleAlg.CUBIC)``
         3. ``cov.reproject("EPSG:4326", axis_resolutions=[0.5, 1.5])``
-        4. ``cov.reproject("EPSG:4326", axis_resolutions=[0.5, 1.5], axis_subsets=[("Lat", 30.5, 60.5), ("Lon", 50.5, 70.5)])``
+        4. ``cov.reproject("EPSG:4326", axis_subsets=[("Lat", 30.5, 60.5), ("Lon", 50.5, 70.5)])``
         5. ``cov.reproject("EPSG:4326", axis_resolutions=[0.5, 1.5], domain_of_coverage=Datacube("cov2"))``
         """
         ret = Reproject(self, target_crs, interpolation_method=interpolation_method)
@@ -1098,7 +1096,7 @@ class WCPSExpr:
 
     # casting
 
-    def cast(self, target_type: str) -> Cast:
+    def cast(self, target_type: CastType) -> Cast:
         """
         Cast the cell values of the current operand to a new ``target_type``.
 
@@ -1197,7 +1195,7 @@ class WCPSExpr:
         """
         return Some(self)
 
-    def condense(self, condense_op: str) -> Condense:
+    def condense(self, condense_op: CondenseOp) -> Condense:
         """
         Condense the cell values of the current operand with the ``condense_op``.
         Iterator variables can be specified with the ``over()`` method, filtering of values
@@ -1238,6 +1236,16 @@ class WCPSExpr:
 
 
 # ----------------------------------------------------------------------------------
+
+BoundType = Union[int, float, str, WCPSExpr]
+"""A type representing axis bounds (in subsetting, extend, scale, etc)."""
+ScalarType = Union[int, float, str, bool]
+"""Scalar values can be of one of these types."""
+OperandType = Union[WCPSExpr, ScalarType]
+"""Type of operands of WCPS expressions."""
+AxisTuple = Union[tuple[str, BoundType], tuple[str, BoundType, BoundType], tuple[str, BoundType, BoundType, str]]
+"""Axis tuple types: (name, low), (name, low, high), or (name, low, high, crs)"""
+
 
 class Datacube(WCPSExpr):
     """
@@ -1900,30 +1908,51 @@ class Axis(WCPSExpr):
         return ret
 
     @staticmethod
-    def get_axis_list(axes):
+    def get_axis_list(axes: Union[Axis, slice, tuple[Axis], AxisTuple, tuple[AxisTuple],
+                                  tuple[slice], list[Axis], list[AxisTuple]]) -> list[Axis]:
+        """
+        Normalizes ``axes`` into a list of Axis objects.
+        :param axes: may be:
+
+            - a single Axis, e.g. ``Axis("X", 0, 100.5, "EPSG:4326")``
+            - a single slice, e.g. ``"X":1``, or ``"X":1:15.3``
+            - a tuple of Axis objects, e.g. ``(Axis(..), Axis(..), ..)``
+            - a single in-place axis tuple, e.g. ``("X", 0, 100.5, "EPSG:4326")``
+            - a tuple of axis tuples, e.g. ``(("X", 0, 100.5), (..), ..)``
+            - a tuple of slices, e.g. ``("X":1, "Y":0:100.5)``
+            - a list of Axis objects, e.g. ``[Axis(..), Axis(..), ..]``
+            - a list of axis tuples, e.g. ``[("X", 0, 100.5), (..), ..]``
+
+        :raise: a :class:`WCPSClientException` in case ``axes`` is in invalid shape.
+        """
         if isinstance(axes, Axis):
             # $c[Axis(..)]
             return [axes]
-        elif isinstance(axes, tuple):
+        if isinstance(axes, slice):
+            return [Axis(axis_name=axes.start, low=axes.stop, high=axes.step)]
+        if isinstance(axes, tuple):
             if isinstance(axes[0], Axis):
                 # $c[Axis(..), Axis(..), ..]
                 return list(axes)
-            elif isinstance(axes[0], str):
+            if isinstance(axes[0], str):
                 # $c[("X", ..)]
                 return [Axis(*axes)]
-            elif isinstance(axes[0], tuple):
+            if isinstance(axes[0], tuple):
                 # $c[("X", ..), ("Y", ..), ..]
                 return [Axis(*axis) for axis in axes]
-        elif isinstance(axes, list):
+            if isinstance(axes[0], slice):
+                return [Axis(axis_name=axis.start, low=axis.stop, high=axis.step)
+                        for axis in axes]
+        if isinstance(axes, list):
             if isinstance(axes[0], Axis):
                 # $c[Axis(..), Axis(..), ..]
                 return axes
-            elif isinstance(axes[0], tuple):
+            if isinstance(axes[0], tuple):
                 # $c[("X", ..), ("Y", ..), ..]
                 return [Axis(*axis) for axis in axes]
-        else:
-            raise WCPSClientException("Invalid subsetting operation, expected one or more Axis objects, "
-                               "or tuples of the shape: (axis_name, low, high, crs)")
+
+        raise WCPSClientException("Invalid subsetting operation, expected one or more Axis objects, "
+                                  "or tuples of the shape: (axis_name, low, high, crs)")
 
 
 class Subset(WCPSExpr):
@@ -2039,7 +2068,8 @@ class Scale(WCPSExpr):
         for axis in self.scale_factors:
             self.add_operand(axis)
             if axis.high is not None:
-                raise WCPSClientException("When scaling by axis factors only a single factor per axis should be specified.")
+                raise WCPSClientException("When scaling by axis factors only a single factor "
+                                          "per axis should be specified.")
             if axis.crs is not None:
                 raise WCPSClientException("When scaling by axis factors a CRS must not be specified.")
         return self
@@ -2048,7 +2078,7 @@ class Scale(WCPSExpr):
 # ---------------------------------------------------------------------------------
 # reprojection
 
-class ResampleAlg:
+class ResampleAlg(StrEnum):
     """
     Possible interpolation methods for :class:`Reproject`.
     """
@@ -2082,19 +2112,19 @@ class Reproject(WCPSExpr):
     """
 
     def __init__(self, op: WCPSExpr, target_crs: str,
-                 interpolation_method: str = None):
+                 interpolation_method: ResampleAlg = None):
         super().__init__(operands=[op])
         self.target_crs: str = target_crs
-        self.interpolation_method: str = interpolation_method
-        self.axis_resolutions: list[Axis] = None
-        self.axis_subsets: list[Axis] = None
-        self.subset_domain: WCPSExpr = None
+        self.interpolation_method = interpolation_method
+        self.axis_resolutions: Optional[list[Axis]] = None
+        self.axis_subsets: Optional[list[Axis]] = None
+        self.subset_domain: Optional[WCPSExpr] = None
 
     def __str__(self):
         ret = f'{super().__str__()}crsTransform({self.operands[0]}, "{self.target_crs}"'
 
         if self.interpolation_method is not None:
-            ret += ', { ' + self.interpolation_method + ' }'
+            ret += ', { ' + str(self.interpolation_method) + ' }'
         if self.axis_resolutions is not None:
             axis_subsets = [f'{axis.axis_name}:{axis.low}' for axis in self.axis_resolutions]
             axis_subsets_str = ', '.join(axis_subsets)
@@ -2128,7 +2158,8 @@ class Reproject(WCPSExpr):
         for axis in self.axis_resolutions:
             self.add_operand(axis)
             if axis.high is not None:
-                raise WCPSClientException("When reprojecting to axis resolutions only a single resolution per axis should be specified.")
+                raise WCPSClientException("When reprojecting to axis resolutions only a single "
+                                          "resolution per axis should be specified.")
             if axis.crs is not None:
                 raise WCPSClientException("When reprojecting to axis resolutions a CRS must not be specified.")
         return self
@@ -2152,7 +2183,8 @@ class Reproject(WCPSExpr):
         for axis in self.axis_subsets:
             self.add_operand(axis)
             if axis.high is None:
-                raise WCPSClientException("When reprojecting, an axis subset must include both lower and upper bounds.")
+                raise WCPSClientException("When reprojecting, an axis subset must include "
+                                          "both lower and upper bounds.")
             if axis.crs is not None:
                 raise WCPSClientException("When reprojecting, an axis subset must not include a CRS.")
         return self
@@ -2178,19 +2210,19 @@ class Reproject(WCPSExpr):
 # ---------------------------------------------------------------------------------
 # casting
 
-class CastType:
+class CastType(StrEnum):
     """
     Possible cell types to which a value can be casted.
     """
     BOOLEAN = "boolean"
     CHAR = "char"
-    UNSIGNED_CHAR = "unsigned " + CHAR
+    UNSIGNED_CHAR = "unsigned char"
     SHORT = "short"
-    UNSIGNED_SHORT = "unsigned " + SHORT
+    UNSIGNED_SHORT = "unsigned short"
     INT = "int"
-    UNSIGNED_INT = "unsigned " + INT
+    UNSIGNED_INT = "unsigned int"
     LONG = "long"
-    UNSIGNED_LONG = "unsigned " + LONG
+    UNSIGNED_LONG = "unsigned long"
     FLOAT = "float"
     DOUBLE = "double"
     CINT16 = "cint16"
@@ -2211,11 +2243,7 @@ class Cast(WCPSExpr):
     - ``Cast(Datacube("test"), CastType.CHAR)``
     """
 
-    def __init__(self, op):
-        super().__init__(operands=[op])
-        self.target_type = None
-
-    def __init__(self, op, target_type: str = None):
+    def __init__(self, op, target_type: CastType = None):
         super().__init__(operands=[op])
         self.target_type = target_type
 
@@ -2229,6 +2257,10 @@ class Cast(WCPSExpr):
         return f'{super().__str__()}(({self.target_type}) {self.operands[0]})'
 
     def to(self, target_type: str) -> Cast:
+        """
+        Specify the type to which to cast this operand.
+        :param target_type: must be one of the :class:`CastType` constants, e.g. :const:`CastType.CHAR`.
+        """
         self.target_type = target_type
         return self
 
@@ -2327,7 +2359,7 @@ class Some(UnaryFunc):
         super().__init__(op, 'some')
 
 
-class CondenseOp:
+class CondenseOp(StrEnum):
     """
     Possible general :class:`Condense` operators.
     """
@@ -2466,7 +2498,7 @@ class Condense(WCPSExpr):
             .using(cov1[('time', pt_ref)])
     """
 
-    def __init__(self, condense_op: str, over: list = None,
+    def __init__(self, condense_op: CondenseOp, over: list = None,
                  using: WCPSExpr = None, where: WCPSExpr = None):
         operands = [where, using]
         if over is not None:
@@ -2684,8 +2716,8 @@ class Switch(WCPSExpr):
         if self.default_expr is None:
             raise WCPSClientException("No default expression has been specified for the switch expression.")
         ret = f'{super().__str__()}(switch'
-        for i in range(len(self.case_expr)):
-            ret += f' case {self.case_expr[i]} return {self.then_expr[i]}'
+        for case_expr, then_expr in zip(self.case_expr, self.then_expr):
+            ret += f' case {case_expr} return {then_expr}'
         ret += f' default return {self.default_expr})'
         return ret
 
@@ -2696,7 +2728,8 @@ class Switch(WCPSExpr):
         :raise: :class:`WCPSClientException` if there is a mismatch between the number of case/then expressions.
         """
         if len(self.case_expr) != len(self.then_expr):
-            raise WCPSClientException("A switch consists of alternating if_case/then expressions, finalized with a default expression.")
+            raise WCPSClientException("A switch consists of alternating if_case/then expressions, "
+                                      "finalized with a default expression.")
         self.add_operand(case_expr)
         self.case_expr.append(case_expr)
         return self
@@ -2704,11 +2737,15 @@ class Switch(WCPSExpr):
     def then(self, then_expr: WCPSExpr) -> Switch:
         """
         Specify an expression to be evaluated when the previously set ``case`` expression is true.
+
         :param then_expr: the then expression.
-        :raise: :class:`WCPSClientException` if there is a mismatch between the number of case/then expressions.
+
+        :raise: :class:`WCPSClientException` if there is a mismatch between
+            the number of case/then expressions.
         """
         if len(self.case_expr) - 1 != len(self.then_expr):
-            raise WCPSClientException("A switch consists of alternating if_case/then expressions, finalized with a default expression.")
+            raise WCPSClientException("A switch consists of alternating if_case/then expressions, "
+                                      "finalized with a default expression.")
         self.add_operand(then_expr)
         self.then_expr.append(then_expr)
         return self
@@ -2716,13 +2753,18 @@ class Switch(WCPSExpr):
     def default(self, default_expr: WCPSExpr) -> Switch:
         """
         Specify a default expressions executed when none of the case conditions are satisfied.
+
         :param default_expr: the default expression.
-        :raise: :class:`WCPSClientException` if no case expressions have been specified, or if a default expression has already been set.
+
+        :raise: :class:`WCPSClientException` if no case expressions have been specified,
+            or if a default expression has already been set.
         """
         if len(self.then_expr) == 0:
-            raise WCPSClientException("In a switch first the if_case/then expressions must be specified, followed by the default expression.")
+            raise WCPSClientException("In a switch first the if_case/then expressions must be specified, "
+                                      "followed by the default expression.")
         if self.default_expr is not None:
-            raise WCPSClientException("A default expression has already been specified for this switch expression.")
+            raise WCPSClientException("A default expression has already been specified for this "
+                                      "switch expression.")
         self.default_expr = default_expr
         self.add_operand(default_expr)
         return self
@@ -2786,4 +2828,3 @@ class WCPSClientException(Exception):
     """
     An exception thrown by this library.
     """
-    pass

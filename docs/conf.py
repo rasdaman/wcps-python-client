@@ -41,6 +41,7 @@ add_module_names = False # Remove namespaces from class/method signatures
 autoapi_dirs = ['../wcps']
 autoapi_options = ['members', 'undoc-members', 'show-inheritance', 'show-module-summary']
 autoapi_python_class_content = 'both'
+autoapi_keep_files = True # Helps with debugging
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', '.venv']

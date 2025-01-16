@@ -2,4 +2,8 @@
 dist
 *.egg-info
 .idea
+__pycache__
+
+# documentation
+autoapi
 _build
