@@ -1,5 +1,3 @@
-from model import MultiBand
-
 # Overview
 
 The [OGC Web Coverage Processing Service (WCPS) standard](https://www.ogc.org/standards/wcps)
