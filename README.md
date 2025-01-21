@@ -263,36 +263,16 @@ To get the date values, we can use the
 Make sure to install it first with `pip install wcs`.
 
 ```python
-from wcps.model import Datacube, AxisIter, Coverage
-from wcps.service import Service
 from wcs.service import WebCoverageService
-from datetime import datetime
-
-# same as in the previous example
-cov = Datacube("AvgTemperatureColorScaled")
-ansi_iter = AxisIter("ansi_iter", "ansi")
-.of_geo_axis(cov["ansi": "2015-01-01": "2015-07-01"])
-averages = Coverage("average_per_date")
-.over(ansi_iter)
-.values(cov["ansi": ansi_iter.ref()].Red.avg())
-query = averages.encode("JSON")
-endpoint = "https://ows.rasdaman.org/rasdaman/ows"
-wcps_service = Service(endpoint)
-result = wcps_service.execute(query)
 
 # get a coverage object that can be inspected for information
+endpoint = "https://ows.rasdaman.org/rasdaman/ows"
 wcs_service = WebCoverageService(endpoint)
 cov = wcs_service.list_full_info('AvgTemperatureColorScaled')
 
-# ansi is an irregular axis in this coverage, and has a list
-# of all datetimes in the coefficients attribute
-all_dates = cov.bbox['ansi'].coefficients
-
-# filter only the dates within our subset
-start_dt = datetime.fromisoformat("2015-01-01")
-end_dt = datetime.fromisoformat("2015-07-01")
-subset_dates = [dt for dt in all_dates
-                if start_dt <= dt.replace(tzinfo=None) <= end_dt]
+# ansi is an irregular axis in this coverage, and we can get the
+# coefficients within the subset above with the [] operator
+subset_dates = cov.bbox.ansi["2015-01-01" : "2015-07-01"]
 
 # visualize the result as a diagram
 import matplotlib.pyplot as plt
