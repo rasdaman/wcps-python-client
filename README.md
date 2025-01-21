@@ -270,14 +270,12 @@ from datetime import datetime
 
 # same as in the previous example
 cov = Datacube("AvgTemperatureColorScaled")
-ansi_iter = AxisIter("ansi_iter", "ansi") \
-            .of_geo_axis(cov["ansi": "2015-01-01": "2015-07-01"])
-averages = Coverage("average_per_date")  \
-           .over(ansi_iter) \
-           .values(cov["ansi": ansi_iter.ref()].Red.avg())
+ansi_iter = AxisIter("ansi_iter", "ansi")
+.of_geo_axis(cov["ansi": "2015-01-01": "2015-07-01"])
+averages = Coverage("average_per_date")
+.over(ansi_iter)
+.values(cov["ansi": ansi_iter.ref()].Red.avg())
 query = averages.encode("JSON")
-
-# execute query and get WCPS result
 endpoint = "https://ows.rasdaman.org/rasdaman/ows"
 wcps_service = Service(endpoint)
 result = wcps_service.execute(query)
@@ -291,12 +289,10 @@ cov = wcs_service.list_full_info('AvgTemperatureColorScaled')
 all_dates = cov.bbox['ansi'].coefficients
 
 # filter only the dates within our subset
-start_date = datetime.fromisoformat("2015-01-01")
-end_date = datetime.fromisoformat("2015-07-01")
+start_dt = datetime.fromisoformat("2015-01-01")
+end_dt = datetime.fromisoformat("2015-07-01")
 subset_dates = [dt for dt in all_dates
-                if start_date <= dt.replace(tzinfo=None) <= end_date]
-
-# TypeError: can't compare offset-naive and offset-aware datetimes
+                if start_dt <= dt.replace(tzinfo=None) <= end_dt]
 
 # visualize the result as a diagram
 import matplotlib.pyplot as plt
