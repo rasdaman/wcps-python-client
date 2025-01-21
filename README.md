@@ -6,6 +6,8 @@ processing, and analysis of multi-dimensional coverages (datacubes) representing
 sensor, image, or statistics data.
 
 This Python library allows to dynamically build WCPS queries and execute on a WCPS server.
+To query a WCS server for information on available data, check the
+[WCS Python Client](https://rasdaman.github.io/wcs-python-client/).
 
 # Installation
 
@@ -114,3 +116,8 @@ make html
 ```
 
 The built documentation can be found in the `docs/_build/html/` subdir.
+
+# Acknowledgments
+
+Created in project [EU FAIRiCUBE](https://fairicube.nilu.no/), with funding from the 
+Horizon Europe programme under grant agreement No 101059238.
