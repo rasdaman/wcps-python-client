@@ -15,6 +15,8 @@ To query a WCS server for information on available data, check the
 
 # Examples
 
+## Band Math
+
 Derive an [NDVI](https://en.wikipedia.org/wiki/Normalized_difference_vegetation_index) 
 map from red and near-infrared bands of a Sentinel-2 datacube, threshold the very
 green areas (values greater than 0.5) as true values (white in a PNG), and save 
@@ -47,6 +49,8 @@ result = service.execute(query, convert_to_numpy=True)
 service.download(query, output_file='vegetation.png')
 ```
 
+## Basic Aggregation
+
 We can calculate the average NDVI as follows:
 
 ```python
@@ -61,6 +65,8 @@ result = service.execute(query)
 
 print(f'The average NDVI is {result.value}')
 ```
+
+## Advanced Aggregation
 
 A more advanced expression is the general condenser (aggregation)
 operation. The example calculates the maximum values across all time slices 
