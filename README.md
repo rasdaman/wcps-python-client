@@ -46,7 +46,7 @@ from io import BytesIO
 Image.open(BytesIO(result.value)).show()
 
 # alternatively, save the content of the response into a file
-service.download(query, output_file='vegetation.png')
+service.download(query, output_file='tci.png')
 ```
 
 ## Band Math
@@ -282,6 +282,34 @@ plt.ylabel('Average')
 plt.show()
 ```
 
+## User-Defined Functions (UDF)
+
+UDFs can be executed with the 
+[Udf](https://rasdaman.github.io/wcps-python-client/autoapi/wcps/model/index.html#wcps.model.Udf)
+object:
+
+```python
+from wcps.service import Service
+from wcps.model import Datacube, Udf
+
+cov = Datacube("S2_L2A_32631_B04_10m")[
+      "ansi" : "2021-04-09",
+      "E" : 670000 : 680000,
+      "N" : 4990220 : 5000220 ]
+
+# Apply the image.stretch(cov) UDF to stretch the values of
+# cov in the [0-255] range, so it can be encoded in JPEG
+stretched = Udf('image.stretch', [cov]).encode("JPEG")
+
+# execute the query on the server and get back a WCPSResult
+service = Service("https://ows.rasdaman.org/rasdaman/ows")
+result = service.execute(stretched)
+
+# show the returned image
+from PIL import Image
+from io import BytesIO
+Image.open(BytesIO(result.value)).show()
+```
 
 # Contributing
 

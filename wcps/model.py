@@ -7,7 +7,7 @@ This can be done by:
 2. Chaining methods on :class:`WCPSExpr` objects, e.g. `Datacube("cube").sum()`
 
 Each subclass defines the ``__str__`` method, so that executing
-``str(Sum(Datacube("cube"))`` returns a valid WCPS query string
+``str(Sum(Datacube("cube")))`` returns a valid WCPS query string
 that can be sent to a WCPS server.
 """
 
@@ -32,7 +32,7 @@ class WCPSExpr:
     an expression by chaining them, e.g
     ``Sum(Datacube("cube1") + Datacube("cube2"))``
     is the same as
-    ``Datacube("cube1").add(Datacube("cube2").sum()``. Notable exceptions are :class:`Switch` and
+    ``Datacube("cube1").add(Datacube("cube2").sum())``. Notable exceptions are :class:`Switch` and
     :class:`Coverage`.
 
     Various builtin operators are overloaded to allow writing expressions more naturally,
@@ -49,7 +49,7 @@ class WCPSExpr:
     """
 
     def __init__(self, operands: Optional[OperandType | list[OperandType]] = None):
-        self.parent: WCPSExpr = None
+        self.parent: Optional[WCPSExpr] = None
         """
         A :class:`WCPSExpr` of which this expression is an operand; ``None`` if this is the root expression.
         E.g. in if this expression is the :class:`Datacube` object in ``Datacube("test") * 5``,
@@ -960,11 +960,11 @@ class WCPSExpr:
         :param axes: specifies a spatio-temporal subset as:
 
         1. a single :class:`Axis` object: ``Axis(axis_name, low, high?, crs?)``
-        2. a tuple of multiple :class:`Axis` objects: ``(Axis(..), Axis(..))``
+        2. a tuple of multiple :class:`Axis` objects: ``(Axis(...), Axis(...))``
         3. a tuple specifying the axis subset in place: ``(axis_name, low, high?, crs?)``
-        4. a tuple of axis subset tuples (see 3.): ``((axis_name, low, high?, crs?), (...), ..)``
-        5. a list of :class:`Axis` objects: `[Axis(..), Axis(..), ..]`
-        6. a list of axis subset tuples (see 3.): ``[(axis_name, low, high?, crs?), (...), ..]``
+        4. a tuple of axis subset tuples (see 3.): ``((axis_name, low, high?, crs?), (...), ...)``
+        5. a list of :class:`Axis` objects: `[Axis(...), Axis(...), ...]`
+        6. a list of axis subset tuples (see 3.): ``[(axis_name, low, high?, crs?), (...), ...]``
 
         :return: An instance of the :class:`Subset` class
 
@@ -982,16 +982,16 @@ class WCPSExpr:
     def __getitem__(self, axes) -> Subset:
         """
         Extract a spatio-temporal subset from this object as specified by the list of ``axes``
-        with an index operator ``[..]``.
+        with an index operator ``[...]``.
 
         :param axes: specifies a spatio-temporal subset as:
 
         1. a single :class:`Axis` object: ``Axis(axis_name, low, high?, crs?)``
-        2. a tuple of multiple :class:`Axis` objects: ``(Axis(..), Axis(..))``
+        2. a tuple of multiple :class:`Axis` objects: ``(Axis(...), Axis(...))``
         3. a tuple specifying the axis subset in place: ``(axis_name, low, high?, crs?)``
-        4. a tuple of axis subset tuples (see 3.): ``((axis_name, low, high?, crs?), (...), ..)``
-        5. a list of :class:`Axis` objects: `[Axis(..), Axis(..), ..]`
-        6. a list of axis subset tuples (see 3.): ``[(axis_name, low, high?, crs?), (...), ..]``
+        4. a tuple of axis subset tuples (see 3.): ``((axis_name, low, high?, crs?), (...), ...)``
+        5. a list of :class:`Axis` objects: `[Axis(...), Axis(...), ...]`
+        6. a list of axis subset tuples (see 3.): ``[(axis_name, low, high?, crs?), (...), ...]``
 
         :return: An instance of the :class:`Subset` class
 
@@ -1014,11 +1014,11 @@ class WCPSExpr:
         :param axes: specifies a spatio-temporal subset as:
 
         1. a single :class:`Axis` object: ``Axis(axis_name, low, high?, crs?)``
-        2. a tuple of multiple :class:`Axis` objects: ``(Axis(..), Axis(..))``
+        2. a tuple of multiple :class:`Axis` objects: ``(Axis(...), Axis(...))``
         3. a tuple specifying the axis subset in place: ``(axis_name, low, high?, crs?)``
-        4. a tuple of axis subset tuples (see 3.): ``((axis_name, low, high?, crs?), (...), ..)``
-        5. a list of :class:`Axis` objects: `[Axis(..), Axis(..), ..]`
-        6. a list of axis subset tuples (see 3.): ``[(axis_name, low, high?, crs?), (...), ..]``
+        4. a tuple of axis subset tuples (see 3.): ``((axis_name, low, high?, crs?), (...), ...)``
+        5. a list of :class:`Axis` objects: `[Axis(...), Axis(...), ...]`
+        6. a list of axis subset tuples (see 3.): ``[(axis_name, low, high?, crs?), (...), ...]``
 
         :return: An instance of the :class:`Subset` class
 
@@ -1081,6 +1081,8 @@ class WCPSExpr:
         :param target_crs: the new CRS, e.g. "EPSG:4326"
         :param interpolation_method: an optional interpolation method, one of the constants
             defined by :class:`ResampleAlg`, e.g. :const:`ResampleAlg.BILINEAR`
+        :param axis_resolutions: optional list of target axis resolutions to
+            maintain in the reprojected result
         :param axis_subsets: crop the result by the specified axis subsets (same syntax as for ``subset(axes)``)
         :param domain_of_coverage: crop the result to the geo domain of another coverage object
 
@@ -1201,28 +1203,6 @@ class WCPSExpr:
         - ``Datacube("test1").some()``
         """
         return Some(self)
-
-    def condense(self, condense_op: CondenseOp) -> Condense:
-        """
-        Condense the cell values of the current operand with the ``condense_op``.
-        Iterator variables can be specified with the ``over()`` method, filtering of values
-        with ``where()``, and the aggregation expression with ``using()``.
-
-        :param condense_op: a condense operator, one of the constants defined in
-            :class:`CondenseOp`, e.g. :const:`CondenseOp.PLUS`.
-        :return: An instance of the :class:`Condense` class; at least ``over()`` and the
-            ``using()`` methods must be called subsequently on the returned value.
-
-        Examples:
-
-        ```
-        cov = Datacube("testcube")
-        pt_var = AxisIter('$pt', 'time').of_grid_axis(cov)
-        pt_ref = pt_var.ref()
-        cov.condense(CondenseOp.PLUS).over(pt_var).where().where(cov["time", pt_ref] > 100).using(cov["time", pt_ref])
-        ```
-        """
-        return Condense(self, condense_op)
 
     def encode(self, data_format: str = None, format_params: str = None) -> Encode:
         """
@@ -1884,7 +1864,7 @@ class MultiBand(WCPSExpr):
 
     def __str__(self):
         bands = [f'{k}: {v}' for k, v in self.bands.items()]
-        return f'{super().__str__()}{{{'; '.join(bands)}}}'
+        return f'{super().__str__()}{{{"; ".join(bands)}}}'
 
 
 # ---------------------------------------------------------------------------------
@@ -1911,7 +1891,7 @@ class Axis(WCPSExpr):
             ret += f':"{self.crs}"'
         operands = [str(op) for op in self.operands]
         operands = [op if op != '"*"' else '*' for op in operands]
-        ret += f'({':'.join(operands)})'
+        ret += f'({":".join(operands)})'
         return ret
 
     @staticmethod
@@ -1923,12 +1903,12 @@ class Axis(WCPSExpr):
 
             - a single Axis, e.g. ``Axis("X", 0, 100.5, "EPSG:4326")``
             - a single slice, e.g. ``"X":1``, or ``"X":1:15.3``
-            - a tuple of Axis objects, e.g. ``(Axis(..), Axis(..), ..)``
+            - a tuple of Axis objects, e.g. ``(Axis(...), Axis(...), ...)``
             - a single in-place axis tuple, e.g. ``("X", 0, 100.5, "EPSG:4326")``
-            - a tuple of axis tuples, e.g. ``(("X", 0, 100.5), (..), ..)``
+            - a tuple of axis tuples, e.g. ``(("X", 0, 100.5), (...), ...)``
             - a tuple of slices, e.g. ``("X":1, "Y":0:100.5)``
-            - a list of Axis objects, e.g. ``[Axis(..), Axis(..), ..]``
-            - a list of axis tuples, e.g. ``[("X", 0, 100.5), (..), ..]``
+            - a list of Axis objects, e.g. ``[Axis(...), Axis(...), ...]``
+            - a list of axis tuples, e.g. ``[("X", 0, 100.5), (...), ...]``
 
         :raise: a :class:`WCPSClientException` in case ``axes`` is in invalid shape.
         """
@@ -1971,8 +1951,7 @@ class Subset(WCPSExpr):
         super().__init__(operands=[op] + Axis.get_axis_list(axes))
 
     def __str__(self):
-        axis_subsets = [str(op) for op in self.operands[1:]]
-        axis_subsets_str = ', '.join(axis_subsets)
+        axis_subsets_str = _list_to_str(self.operands[1:], ', ')
         return f'{super().__str__()}{self.operands[0]}[{axis_subsets_str}]'
 
 
@@ -1985,8 +1964,7 @@ class Extend(WCPSExpr):
         super().__init__(operands=[op] + Axis.get_axis_list(axes))
 
     def __str__(self):
-        axis_subsets = [str(op) for op in self.operands[1:]]
-        axis_subsets_str = ', '.join(axis_subsets)
+        axis_subsets_str = _list_to_str(self.operands[1:], ', ')
         return f'{super().__str__()}extend({self.operands[0]}, {{ {axis_subsets_str} }})'
 
 
@@ -2023,15 +2001,13 @@ class Scale(WCPSExpr):
         ret = f'{super().__str__()}scale({self.operands[0]}, {{ '
 
         if self.axis_subsets is not None:
-            axis_subsets = [str(op) for op in self.operands[1:]]
-            ret += ', '.join(axis_subsets)
+            ret += _list_to_str(self.operands[1:], ', ')
         elif self.another_coverage is not None:
             ret += f'imageCrsDomain({self.another_coverage})'
         elif self.scale_factor is not None:
             return f'{super().__str__()}scale({self.operands[0]}, {self.scale_factor})'
         elif self.scale_factors is not None:
-            axis_subsets = [str(op) for op in self.operands[1:]]
-            ret += ', '.join(axis_subsets)
+            ret += _list_to_str(self.operands[1:], ', ')
 
         ret += ' })'
         return ret
@@ -2135,8 +2111,7 @@ class Reproject(WCPSExpr):
             axis_subsets_str = ', '.join(axis_subsets)
             ret += f', {{ {axis_subsets_str} }}'
         if self.axis_subsets is not None:
-            axis_subsets = [str(axis) for axis in self.axis_subsets]
-            axis_subsets_str = ', '.join(axis_subsets)
+            axis_subsets_str = _list_to_str(self.axis_subsets, ', ')
             ret += f', {{ {axis_subsets_str} }}'
         elif self.subset_domain is not None:
             ret += f', {{ domain({self.subset_domain}) }}'
@@ -2526,7 +2501,7 @@ class Condense(WCPSExpr):
         :raise: :class:`WCPSClientException` if no iterator variables or a using expression have been set.
         """
         self._validate()
-        over = ', '.join(str(axis_iter) for axis_iter in self.iter_vars)
+        over = _list_to_str(self.iter_vars, ', ')
         ret = f'{super().__str__()}(condense {self.condense_op} over {over}'
         if self.where_where is not None:
             ret += f' where {self.where_where}'
@@ -2640,7 +2615,7 @@ class Coverage(WCPSExpr):
         """
         self._validate()
         ret = super().__str__()
-        over = ', '.join(str(axis_iter) for axis_iter in self.iter_vars)
+        over = _list_to_str(self.iter_vars, ', ')
         ret += f'(coverage {self.name} over {over} values {self.values_clause})'
         return ret
 
@@ -2776,6 +2751,34 @@ class Switch(WCPSExpr):
 
 
 # ---------------------------------------------------------------------------------
+# user-defined functions
+
+class Udf(WCPSExpr):
+    """
+    Execute a user-defined function (UDF), or any other WCPS function for which
+    no concrete class exists yet.
+
+    :param function_name: the UDF name, e.g. image.stretch
+    :param operands: a list of operands that the UDF expects
+
+    Examples: ::
+
+        stretch = Udf('stretch', Datacube('cov1'))
+    """
+
+    def __init__(self, function_name: str, operands: list[OperandType]):
+        super().__init__(operands=operands)
+        self.function_name = function_name
+
+    def __str__(self):
+        ret = super().__str__()
+        ret += f'{self.function_name}('
+        ret += _list_to_str(self.operands, ', ')
+        ret += ')'
+        return ret
+
+
+# ---------------------------------------------------------------------------------
 # data encode/decode
 
 class Encode(WCPSExpr):
@@ -2783,6 +2786,10 @@ class Encode(WCPSExpr):
     Encode a coverage to some data format. The data format must be specified
     with the :meth:`to` method if it isn't provided here. Format parameters can
     be specified with the :meth:`params` method.
+
+    :param op: the coverage expression to encode.
+    :param data_format: the data format, e.g. "GTiff"
+    :param format_params: additional format parameters the influence the encoding
 
     Examples:
 
@@ -2792,11 +2799,6 @@ class Encode(WCPSExpr):
     """
 
     def __init__(self, op: WCPSExpr, data_format: str = None, format_params: str = None):
-        """
-        :param op: the coverage expression to encode.
-        :param data_format: the data format, e.g. "GTiff"
-        :param format_params: additional format parameters the influence the encoding
-        """
         super().__init__(operands=[op])
         self.data_format = data_format
         self.format_params = format_params
@@ -2833,3 +2835,18 @@ class WCPSClientException(Exception):
     """
     An exception thrown by this library.
     """
+
+
+def _list_to_str(lst: list, sep: str) -> str:
+    """
+    Convert a list of items into a single string. Each item is converted to a string
+    and separated by a specified separator in the result.
+
+    :param lst: The list of items to be joined into a string. Each item in the list
+                will be converted to a string before joining.
+    :param sep: The separator to use between each item in the resulting string.
+
+    :return: A single string containing all items from the list, separated by the
+             specified separator.
+    """
+    return sep.join([str(item) for item in lst])
