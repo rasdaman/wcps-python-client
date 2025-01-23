@@ -56,6 +56,7 @@ version = {attr = "wcps.__version__"}
 
 [tool.pylint.'MESSAGES CONTROL']
 max-line-length = 120
+ignore = ["spectral.py"]
 disable = """
     too-many-arguments,
     not-callable,

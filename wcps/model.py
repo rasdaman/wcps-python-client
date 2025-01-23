@@ -2426,7 +2426,10 @@ class AxisIter(WCPSExpr):
             iter_spec = f'imageCrsDomain({self.grid_axis}, {self.axis_name})'
         elif self.geo_axis is not None:
             iter_spec = f'domain({self.geo_axis}, {self.axis_name})'
-        return f'${self.var_name} {self.axis_name}({iter_spec})'
+        var_name = self.var_name
+        if not self.var_name.startswith('$'):
+            var_name = '$' + var_name
+        return f'{var_name} {self.axis_name}({iter_spec})'
 
 
 class AxisIterRef(WCPSExpr):

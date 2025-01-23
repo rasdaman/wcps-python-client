@@ -89,6 +89,51 @@ Image.open(BytesIO(result.value)).show()
 result = service.execute(query, convert_to_numpy=True)
 ```
 
+Instead of explicitly writing the NDVI formula (`ndvi = (nir - red) / (nir + red)`),
+we can use the
+[NDVI](https://rasdaman.github.io/wcps-python-client/autoapi/wcps/spectral/index.html#wcps.spectral.NDVI)
+class from the 
+[wcps.spectral](https://rasdaman.github.io/wcps-python-client/autoapi/wcps/spectral/index.html)
+module. The `wcps.spectral` module defines classes for over 200 spectral indices based on the standardized 
+[Awesome Spectral Indices](https://github.com/davemlz/awesome-spectral-indices) list.
+Given the required spectral bands, each class automatically applies the
+formula to compute the respective index.
+
+```python
+from wcps.service import Service
+from wcps.model import Datacube, Axis
+from wcps.spectral import NDVI
+
+subset = [Axis("ansi", "2021-04-09"),
+          Axis("E", 670000, 680000),
+          Axis("N", 4990220, 5000220)]
+
+red = Datacube("S2_L2A_32631_B04_10m")[subset]
+nir = Datacube("S2_L2A_32631_B08_10m")[subset]
+
+# spectral index class automatically applies the formula 
+ndvi = NDVI(N=nir, R=red)
+
+vegetation = ndvi > 0.5
+query = vegetation.encode("PNG")
+
+service = Service("https://ows.rasdaman.org/rasdaman/ows")
+result = service.execute(query)
+from PIL import Image
+from io import BytesIO
+Image.open(BytesIO(result.value)).show()
+```
+
+Alternatively we could also use the [spyndex](https://spyndex.readthedocs.io/) library
+which supports the same indices list. Make sure to first install it with
+`pip install spyndex pyarrow setuptools`, and then we can perform the NDVI computation with:
+
+```python
+import spyndex
+
+ndvi = spyndex.computeIndex("NDVI", {"N": nir, "R": red})
+```
+
 ## Composites
 
 A [false-color](https://en.wikipedia.org/wiki/False_color) composite can 
