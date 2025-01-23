@@ -56,11 +56,11 @@ def test_execute():
                .using(cov["ansi": ansi_iter.ref()]))
     query = max_map.encode("PNG")
     result = service.execute(query)
-    assert result.type == WCPSResultType.ARRAY
+    assert result.type == WCPSResultType.IMAGE
 
     result = service.execute('for $c in (NIR) return encode($c, "PNG")')
     expected = 'a71c63b3d24ecc065609395358348e23ce3eb546dc3e3d5f98c714901beda27d'
-    assert result.type == WCPSResultType.ARRAY
+    assert result.type == WCPSResultType.IMAGE
     assert get_checksum(result.value) == expected
 
     query = Datacube("NIR")["i":0:2, "j":0:2].red.encode("json")
@@ -70,12 +70,12 @@ def test_execute():
 
     query = Datacube("NIR").encode("PNG")
     result = service.execute(query, convert_to_numpy=True)
-    assert result.type == WCPSResultType.ARRAY
+    assert result.type == WCPSResultType.NUMPY
     assert result.value.shape == (1076, 1916, 3)
 
     query = Datacube("NIR").encode("application/netcdf")
     result = service.execute(query, convert_to_numpy=True)
-    assert result.type == WCPSResultType.ARRAY
+    assert result.type == WCPSResultType.NUMPY
     assert result.value.shape == (1916, 1076, 3)
 
     query = Datacube("NIR").sum()
