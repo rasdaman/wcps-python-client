@@ -41,6 +41,7 @@ add_module_names = False  # Remove namespaces from class/method signatures
 intersphinx_mapping = {
     'requests': ('https://docs.python-requests.org/en/latest/', None),
     'python': ('https://docs.python.org/3', None),
+    'PIL': ('https://pillow.readthedocs.io/en/stable/', None),
 }
 
 autoapi_dirs = ['../wcps']

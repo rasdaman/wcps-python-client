@@ -9,12 +9,13 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Optional, Union
 
+import netCDF4 as nc
 import numpy as np
 import requests
 from PIL import Image
-import netCDF4 as nc
 from requests import HTTPError
 from requests.auth import HTTPBasicAuth
+from wcs.model import WCSClientException
 
 from wcps.model import WCPSExpr, WCPSClientException
 
@@ -32,8 +33,14 @@ class WCPSResultType(StrEnum):
     """A multiband scalar value is a list of multiple numbers, e.g. [1, 2, 3]"""
     JSON = 'json'
     """A JSON list"""
+    IMAGE = 'image'
+    """An array encoded to an image data format such as TIFF or PNG."""
+    NETCDF = 'netcdf'
+    """An array encoded to NetCDF."""
+    NUMPY = 'numpy'
+    """A numpy array."""
     ARRAY = 'array'
-    """An array, either encoded to a data format such as TIFF, PNG, netCDF, or as a numpy object."""
+    """Generic array type, unknown data format."""
 
 
 @dataclass
@@ -72,7 +79,7 @@ class Service:
         self.auth = HTTPBasicAuth(username, password) if username and password else None
 
     def execute(self,
-                wcps_query: str | WCPSExpr,
+                wcps_query: Union[str, WCPSExpr],
                 convert_to_numpy: bool = False,
                 conn_timeout: int = DEFAULT_CONN_TIMEOUT,
                 read_timeout: int = DEFAULT_READ_TIMEOUT) -> WCPSResult:
@@ -98,7 +105,7 @@ class Service:
         return self.response_to_wcps_result(response, convert_to_numpy=convert_to_numpy)
 
     def download(self,
-                 wcps_query: str | WCPSExpr,
+                 wcps_query: Union[str, WCPSExpr],
                  output_file: str,
                  conn_timeout: int = DEFAULT_CONN_TIMEOUT,
                  read_timeout: int = DEFAULT_READ_TIMEOUT):
@@ -118,8 +125,58 @@ class Service:
             for chunk in response.iter_content(chunk_size=8192):
                 file.write(chunk)
 
+    def show(self,
+             query_or_result: Union[str, WCPSExpr, WCPSResult],
+             conn_timeout: int = DEFAULT_CONN_TIMEOUT,
+             read_timeout: int = DEFAULT_READ_TIMEOUT):
+        """
+        Displays the evaluation result of a WCPS query.
+
+        - 2D image results are shown with :meth:`PIL.Image.Image.show`.
+        - scalar, JSON, and numpy array results are printed to stdout
+        - netCDF results print the Dataset information to stdout
+
+        :param query_or_result: If a WCPS query in string or as a
+            :class:`wcps.model.WCPSExpr` object is provided, then it will be executed first with
+            the :meth:`execute` method, and the returned result will be accordingly displayed.
+            If instead a :class:`WCPSResult` object is provided, it will be just displayed.
+
+        :param conn_timeout: how long (seconds) to wait for the connection to be established
+        :param read_timeout: how long (seconds) to wait for the query to execute
+
+        :raise: :exc:`wcps.model.WCPSClientException` if the server returns an error status code,
+            or the result cannot be handled.
+        """
+        if isinstance(query_or_result, str) or isinstance(query_or_result, WCPSExpr):
+            result = self.execute(query_or_result,
+                                  conn_timeout=conn_timeout, read_timeout=read_timeout)
+        elif isinstance(query_or_result, WCPSResult):
+            result = query_or_result
+        else:
+            raise WCSClientException(f'Cannot handle showing WCPS query or result '
+                                     f'of type {query_or_result.__class__}')
+
+        type = result.type
+        data = result.value
+
+        if type == WCPSResultType.SCALAR or type == WCPSResultType.JSON:
+            print(data)
+        elif type == WCPSResultType.MULTIBAND_SCALAR:
+            print(str(data).replace('[', '{').replace(']', '}'))
+        elif type == WCPSResultType.IMAGE:
+            from PIL import Image
+            from io import BytesIO
+            Image.open(BytesIO(data)).show()
+        elif type == WCPSResultType.NETCDF:
+            with nc.Dataset("memory", mode="r", memory=data) as dataset:
+                print(dataset)
+        elif type == WCPSResultType.NUMPY:
+            print(data)
+        else:
+            raise WCSClientException(f"Cannot handle showing WCPS result.")
+
     def execute_raw(self,
-                    wcps_query: str | WCPSExpr,
+                    wcps_query: Union[str, WCPSExpr],
                     conn_timeout: int = DEFAULT_CONN_TIMEOUT,
                     read_timeout: int = DEFAULT_READ_TIMEOUT,
                     stream: bool = False) -> requests.Response:
@@ -194,16 +251,21 @@ class Service:
 
             return WCPSResult(value=scalars[0], type=WCPSResultType.SCALAR)
 
-        # array
+        # array result
+        if 'image' in content_type:
+            type = WCPSResultType.IMAGE
+        elif 'netcdf' in content_type:
+            type = WCPSResultType.NETCDF
+        else:
+            type = WCPSResultType.ARRAY
+
         if convert_to_numpy:
-
             # 2D image formats
-            if 'image/' in content_type:
+            if type == WCPSResultType.IMAGE:
                 image = Image.open(io.BytesIO(response.content))
-                return WCPSResult(value=np.array(image), type=WCPSResultType.ARRAY)
-
+                return WCPSResult(value=np.array(image), type=WCPSResultType.NUMPY)
             # netcdf
-            if 'application/netcdf' in content_type:
+            if type == WCPSResultType.NETCDF:
                 with nc.Dataset("memory", mode="r", memory=response.content) as dataset:
 
                     data_arrays = []
@@ -215,14 +277,13 @@ class Service:
 
                     # Stack all arrays along a new dimension
                     return WCPSResult(value=np.stack(data_arrays, axis=ndim),
-                                      type=WCPSResultType.ARRAY)
-
+                                      type=WCPSResultType.NUMPY)
             # unsupported format
             raise WCPSClientException(f"Cannot convert content-type {content_type} "
                                       f"to a numpy array object.")
 
         # no conversion to numpy
-        return WCPSResult(value=response.content, type=WCPSResultType.ARRAY)
+        return WCPSResult(value=response.content, type=type)
 
     @staticmethod
     def _parse_scalar(value: str) -> Union[int | float | bool]:

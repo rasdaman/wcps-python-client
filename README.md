@@ -22,7 +22,6 @@ lower and upper bounds for the axes we want to *trim*, or a single bound to
 *slice* the axis at a particular index.
 
 ```python
-from wcps.service import Service
 from wcps.model import Datacube
 
 # Slice the time axis (with name ansi) at "2021-04-09",
@@ -34,20 +33,43 @@ cov = Datacube("S2_L2A_32631_TCI_60m")[
 
 # encode final result to JPEG
 query = cov.encode("JPEG")
+```
 
-# execute the query on the server and get back a WCPSResult
+The [Service](https://rasdaman.github.io/wcps-python-client/autoapi/wcps/service/index.html#wcps.service.Service) 
+class allows to [execute](https://rasdaman.github.io/wcps-python-client/autoapi/wcps/service/index.html#wcps.service.Service.execute) 
+the query on the server and get back a 
+[WCPSResult](https://rasdaman.github.io/wcps-python-client/autoapi/wcps/service/index.html#wcps.service.WCPSResult)
+object. Optionally, array results can be automatically converted to a numpy array
+by passing `convert_to_numpy=True` to the execute method.
+
+```python
+from wcps.service import Service
+
 service = Service("https://ows.rasdaman.org/rasdaman/ows")
 result = service.execute(query)
+# or automatically convert the result to a numpy array
+result = service.execute(query, convert_to_numpy=True)
+```
 
-# show the returned image; requires to install pillow:
-# pip install pillow
-from PIL import Image
-from io import BytesIO
-Image.open(BytesIO(result.value)).show()
+Alternatively, the result can be saved into a file with the
+[download](https://rasdaman.github.io/wcps-python-client/autoapi/wcps/service/index.html#wcps.service.Service.download)
+method
 
-# alternatively, save the content of the response into a file
+```python
 service.download(query, output_file='tci.png')
 ```
+
+or displayed with [show](https://rasdaman.github.io/wcps-python-client/autoapi/wcps/service/index.html#wcps.service.Service.show),
+mainly for demo purposes:
+
+```python
+service.show(query)
+```
+
+Note that calling this method requires the following dependencies:
+
+- `pip install pillow` - for image results
+- `pip install netCDF4` - for netcdf results
 
 ## Band Math
 
@@ -74,19 +96,8 @@ vegetation = ndvi > 0.5
 # encode final result to PNG
 query = vegetation.encode("PNG")
 
-# execute the query on the server and get back the response
 service = Service("https://ows.rasdaman.org/rasdaman/ows")
-result = service.execute(query)
-
-# show the returned image; requires to install pillow:
-# pip install pillow
-from PIL import Image
-from io import BytesIO
-Image.open(BytesIO(result.value)).show()
-
-# similar to above, but automatically convert the PNG result 
-# to a numpy array
-result = service.execute(query, convert_to_numpy=True)
+service.show(query)
 ```
 
 Instead of explicitly writing the NDVI formula (`ndvi = (nir - red) / (nir + red)`),
@@ -118,10 +129,7 @@ vegetation = ndvi > 0.5
 query = vegetation.encode("PNG")
 
 service = Service("https://ows.rasdaman.org/rasdaman/ows")
-result = service.execute(query)
-from PIL import Image
-from io import BytesIO
-Image.open(BytesIO(result.value)).show()
+service.show(query)
 ```
 
 Alternatively we could also use the [spyndex](https://spyndex.readthedocs.io/) library
@@ -158,15 +166,9 @@ false_color = MultiBand({"red": nir, "green": red, "blue": green})
 # scale the cell values to fit in the 0-255 range suitable for PNG
 scaled = false_color / 17.0
 
-# execute the query on the server and get back the response
+# execute the query on the server and show the result
 service = Service("https://ows.rasdaman.org/rasdaman/ows")
-result = service.execute(scaled.encode("PNG"))
-
-# show the returned image; requires to install pillow:
-# pip install pillow
-from PIL import Image
-from io import BytesIO
-Image.open(BytesIO(result.value)).show()
+service.show(scaled.encode("PNG"))
 ```
 
 ## Matching Resolution / Projection
@@ -196,15 +198,9 @@ composite = MultiBand({"red": swir, "green": nir, "blue": green})
 # scale the cell values to fit in the 0-255 range suitable for PNG
 scaled = composite / 17.0
 
-# execute the query on the server and get back the response
+# execute the query on the server and show the response
 service = Service("https://ows.rasdaman.org/rasdaman/ows")
-result = service.execute(scaled.encode("PNG"))
-
-# show the returned image; requires to install pillow:
-# pip install pillow
-from PIL import Image
-from io import BytesIO
-Image.open(BytesIO(result.value)).show()
+service.show(scaled.encode("PNG"))
 ```
 
 Matching different CRS projections can be done by 
@@ -346,14 +342,9 @@ cov = Datacube("S2_L2A_32631_B04_10m")[
 # cov in the [0-255] range, so it can be encoded in JPEG
 stretched = Udf('image.stretch', [cov]).encode("JPEG")
 
-# execute the query on the server and get back a WCPSResult
+# execute the query on the server and show the result
 service = Service("https://ows.rasdaman.org/rasdaman/ows")
-result = service.execute(stretched)
-
-# show the returned image
-from PIL import Image
-from io import BytesIO
-Image.open(BytesIO(result.value)).show()
+service.show(stretched)
 ```
 
 # Contributing
