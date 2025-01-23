@@ -15,7 +15,6 @@ import requests
 from PIL import Image
 from requests import HTTPError
 from requests.auth import HTTPBasicAuth
-from wcs.model import WCSClientException
 
 from wcps.model import WCPSExpr, WCPSClientException
 
@@ -153,7 +152,7 @@ class Service:
         elif isinstance(query_or_result, WCPSResult):
             result = query_or_result
         else:
-            raise WCSClientException(f'Cannot handle showing WCPS query or result '
+            raise WCPSClientException(f'Cannot handle showing WCPS query or result '
                                      f'of type {query_or_result.__class__}')
 
         type = result.type
@@ -173,7 +172,7 @@ class Service:
         elif type == WCPSResultType.NUMPY:
             print(data)
         else:
-            raise WCSClientException(f"Cannot handle showing WCPS result.")
+            raise WCPSClientException(f"Cannot handle showing WCPS result.")
 
     def execute_raw(self,
                     wcps_query: Union[str, WCPSExpr],
