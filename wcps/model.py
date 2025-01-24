@@ -97,7 +97,7 @@ class WCPSExpr:
             elif isinstance(op, ScalarType):
                 self.operands.append(Scalar(op))
             else:
-                raise WCPSClientException(f"Invalid operand type {op.__class__}, "
+                raise WCPSClientException(f"Invalid operand type {type(op)}, "
                                           f"expected a WCPSExpr or a scalar value.")
             self.operands[-1].parent = self
 
@@ -1906,7 +1906,35 @@ def rgba(r: OperandType, g: OperandType, b: OperandType, a: OperandType) -> Mult
 
 class Axis(WCPSExpr):
     """
-    An axis subset, e.g. X:"EPSG:4326"(15.0:20.0)
+    Represents an axis interval for defining spatial, temporal, or other dimensional subsets
+    in WCPS queries. An axis subset specifies a trim (or slice) along a specific axis,
+    optionally with a Coordinate Reference System (CRS) if the low/high are not in the
+    native CRS.
+
+    This object can be used in operations like subsetting, extending, or scaling
+    coverages. It supports both single values (slicing) and ranges (trimming).
+
+    :param axis_name: The name of the axis (e.g., "X", "Y", "time").
+    :param low: The lower bound of a subset trim, or a slice value if ``high`` is not given.
+    :param high: The upper bound of a subset trim.
+    :param crs: The CRS associated with the axis (e.g., "EPSG:4326"), usually set if
+        the low/high values are not in the native CRS.
+
+    Constants:
+        MIN ('*'): Can be used for the minimum bound of an axis.
+        MAX ('*'): Can be used for the maximum bound of an axis.
+
+    Examples:
+
+    .. code:: python
+
+        # Define a spatial axis subset from 15.0 to 20.0 with CRS "EPSG:4326"
+        axis = Axis("X", 15.0, 20.0, "EPSG:4326")
+
+        # Define slicing on the temporal axis time
+        axis = Axis("time", "2025-01-01")
+
+    :raises WCPSClientException: If the axis name is empty.
     """
 
     MIN = '*'
@@ -1914,6 +1942,8 @@ class Axis(WCPSExpr):
 
     def __init__(self, axis_name: str, low: BoundType, high: BoundType = None, crs: str = None):
         super().__init__(operands=[low, high])
+        if not axis_name:
+            raise WCPSClientException("Axis name must not be empty.")
         self.axis_name = axis_name
         self.low = low
         self.high = high
@@ -1954,46 +1984,36 @@ class Axis(WCPSExpr):
         if isinstance(axes, tuple):
             if isinstance(axes[0], Axis):
                 # $c[Axis(..), Axis(..), ..]
-                for a in axes:
-                    if not isinstance(a, Axis):
-                        raise WCPSClientException("Mixed types of axis specifications provided, "
-                                                  "expected all objects to be of type Axis.")
+                Axis._validate_all_same_type(axes, Axis, "Axis")
                 return list(axes)
             if isinstance(axes[0], str):
                 # $c[("X", ..)]
                 return [Axis(*axes)]
             if isinstance(axes[0], tuple):
                 # $c[("X", ..), ("Y", ..), ..]
-                for a in axes:
-                    if not isinstance(a, tuple):
-                        raise WCPSClientException("Mixed types of axis specifications provided, "
-                                                  "expected all objects to be of type tuple.")
+                Axis._validate_all_same_type(axes, tuple, "tuple")
                 return [Axis(*axis) for axis in axes]
             if isinstance(axes[0], slice):
-                for a in axes:
-                    if not isinstance(a, slice):
-                        raise WCPSClientException("Mixed types of axis specifications provided, "
-                                                  "expected all objects to be of type slice.")
-                return [Axis(axis_name=axis.start, low=axis.stop, high=axis.step)
-                        for axis in axes]
+                Axis._validate_all_same_type(axes, slice, "slice")
+                return [Axis(axis_name=s.start, low=s.stop, high=s.step) for s in axes]
         if isinstance(axes, list):
             if isinstance(axes[0], Axis):
                 # $c[Axis(..), Axis(..), ..]
-                for a in axes:
-                    if not isinstance(a, Axis):
-                        raise WCPSClientException("Mixed types of axis specifications provided, "
-                                                  "expected all objects to be of type Axis.")
+                Axis._validate_all_same_type(axes, Axis, "Axis")
                 return axes
             if isinstance(axes[0], tuple):
                 # $c[("X", ..), ("Y", ..), ..]
-                for a in axes:
-                    if not isinstance(a, tuple):
-                        raise WCPSClientException("Mixed types of axis specifications provided, "
-                                                  "expected all objects to be of type tuple.")
+                Axis._validate_all_same_type(axes, tuple, "tuple")
                 return [Axis(*axis) for axis in axes]
 
         raise WCPSClientException("Invalid subsetting operation, expected one or more Axis objects, "
                                   "or tuples of the shape: (axis_name, low, high, crs)")
+
+    @staticmethod
+    def _validate_all_same_type(axes, axis_type, axis_type_str):
+        if not all(isinstance(a, axis_type) for a in axes):
+            raise WCPSClientException(f"Mixed types of axis specifications provided,"
+                                      f"expected all objects to be of type {axis_type_str}.")
 
 
 class Subset(WCPSExpr):
@@ -2062,6 +2082,9 @@ class Scale(WCPSExpr):
             return f'{super().__str__()}scale({self.operands[0]}, {self.scale_factor})'
         elif self.scale_factors is not None:
             ret += _list_to_str(self.operands[1:], ', ')
+        else:
+            raise WCPSClientException("No scale target specified, exactly one of to_explicit_grid_domain, "
+                                      "to_grid_domain_of, by_factor, or by_factor_per_axis must be executed.")
 
         ret += ' })'
         return ret
@@ -2075,6 +2098,7 @@ class Scale(WCPSExpr):
         self.axis_subsets = Axis.get_axis_list(grid_axes)
         for axis in self.axis_subsets:
             self.add_operand(axis)
+        self._validate_exclusive()
         return self
 
     def to_grid_domain_of(self, another_coverage: WCPSExpr):
@@ -2085,14 +2109,17 @@ class Scale(WCPSExpr):
         """
         self.another_coverage = another_coverage
         self.add_operand(another_coverage)
+        self._validate_exclusive()
         return self
 
-    def by_factor(self, scale_factor):
+    def by_factor(self, scale_factor: Union[int, float]):
         """
         :param scale_factor: factor > 1 for scaling up, 0 < factor < 1 for scaling down
         """
+        self._validate_scale_factor(scale_factor)
         self.scale_factor = scale_factor
         self.add_operand(self.scale_factor)
+        self._validate_exclusive()
         return self
 
     def by_factor_per_axis(self, scale_factors):
@@ -2107,8 +2134,32 @@ class Scale(WCPSExpr):
                                           "per axis should be specified.")
             if axis.crs is not None:
                 raise WCPSClientException("When scaling by axis factors a CRS must not be specified.")
+            self._validate_scale_factor(axis.low)
+        self._validate_exclusive()
         return self
 
+    def _validate_scale_factor(self, scale_factor):
+        """
+        Validate that a scale factor is correct type and value.
+        :param scale_factor: the scaling factor to check
+        :raises WCPSClientException: if the scale factor is invalid type of <= 0.
+        :meta private:
+        """
+        if not isinstance(scale_factor, (float, int)):
+            raise WCPSClientException(f"Expected a number scale factor, got {type(scale_factor)}.")
+        if scale_factor <= 0:
+            raise WCPSClientException("Scale factor must be greater than zero.")
+
+    def _validate_exclusive(self):
+        """
+        Check that only one scale target is specified.
+        :raises WCPSClientException: if multiple scale targets were specified.
+        """
+        values = [self.axis_subsets, self.another_coverage, self.scale_factor, self.scale_factors]
+        if sum(1 for x in values if x is not None) > 1:
+            raise WCPSClientException("Cannot set multiple scale specifications, exactly one of "
+                                      "to_explicit_grid_domain, to_grid_domain_of, by_factor, or "
+                                      "by_factor_per_axis must be executed.")
 
 # ---------------------------------------------------------------------------------
 # reprojection
@@ -2130,6 +2181,11 @@ class ResampleAlg(StrEnum):
     Q1 = 'q1'
     Q3 = 'q3'
 
+    @classmethod
+    def list(cls):
+        """:return: a list of the Enum values."""
+        return list(map(lambda c: c.value, cls))
+
 
 class Reproject(WCPSExpr):
     """
@@ -2149,8 +2205,8 @@ class Reproject(WCPSExpr):
     def __init__(self, op: WCPSExpr, target_crs: str,
                  interpolation_method: ResampleAlg = None):
         super().__init__(operands=[op])
-        self.target_crs: str = target_crs
-        self.interpolation_method = interpolation_method
+        self.target_crs: str = self._validate_crs(target_crs)
+        self.interpolation_method = self._validate_interpolation_method(interpolation_method)
         self.axis_resolutions: Optional[list[Axis]] = None
         self.axis_subsets: Optional[list[Axis]] = None
         self.subset_domain: Optional[WCPSExpr] = None
@@ -2236,9 +2292,42 @@ class Reproject(WCPSExpr):
             Reproject(cov1, "EPSG:4326")
                 .subset_by_coverage_domain(cov2)
         """
+        if not isinstance(subset_domain, WCPSExpr):
+            raise WCPSClientException(f"Reproject subset_domain must be a WCPSExpr object, "
+                                      f"got {type(subset_domain)} instead.")
         self.subset_domain = subset_domain
         self.add_operand(self.subset_domain)
         return self
+
+    def _validate_crs(self, crs: str) -> str:
+        """
+        Validate the CRS string format.
+        """
+        if not crs:
+            raise WCPSClientException("Reproject target_crs cannot be empty.")
+        return crs
+
+    def _validate_interpolation_method(self, method: Union[ResampleAlg, str]) -> Union[ResampleAlg, str, None]:
+        """
+        Validate and convert the interpolation method to a ResampleAlg enum.
+        :param method: The interpolation method to validate.
+        :return: The validated ResampleAlg enum or None if validation fails.
+        :raise: :class:`WCPSClientException` if the interpolation method is invalid.
+        :meta private:
+        """
+        if method is None:
+            return None
+        if isinstance(method, str):
+            method = method.strip()
+            allowed_methods = ResampleAlg.list()
+            if method not in allowed_methods:
+                raise WCPSClientException(f"Invalid interpolation method '{method}', "
+                                          f"expected one of: {', '.join(allowed_methods)}.")
+            return method
+        if isinstance(method, ResampleAlg):
+            return method
+        raise WCPSClientException(f"Invalid interpolation method type '{type(method)}', "
+                                  f"expected a ResampleAlg or a string.")
 
 
 # ---------------------------------------------------------------------------------
@@ -2264,6 +2353,11 @@ class CastType(StrEnum):
     COMPLEX = "complex"
     COMPLEX2 = "complex2"
 
+    @classmethod
+    def list(cls):
+        """:return: a list of the Enum values."""
+        return list(map(lambda c: c.value, cls))
+
 
 class Cast(WCPSExpr):
     """
@@ -2277,9 +2371,9 @@ class Cast(WCPSExpr):
     - ``Cast(Datacube("test"), CastType.CHAR)``
     """
 
-    def __init__(self, op, target_type: CastType = None):
+    def __init__(self, op: OperandType, target_type: Union[CastType, str] = None):
         super().__init__(operands=[op])
-        self.target_type = target_type
+        self.target_type = self._validate_target_type(target_type)
 
     def __str__(self):
         """
@@ -2290,7 +2384,7 @@ class Cast(WCPSExpr):
             raise WCPSClientException("No target type to which to cast the operand was provided.")
         return f'{super().__str__()}(({self.target_type}) {self.operands[0]})'
 
-    def to(self, target_type: str) -> Cast:
+    def to(self, target_type: Union[CastType, str]) -> Cast:
         """
         Specify the type to which to cast this operand.
         :param target_type: must be one of the :class:`CastType` constants, e.g. :const:`CastType.CHAR`.
@@ -2298,6 +2392,27 @@ class Cast(WCPSExpr):
         self.target_type = target_type
         return self
 
+    def _validate_target_type(self, target_type: Union[CastType, str]) -> Union[CastType, str, None]:
+        """
+        Validates and converts the target type to a CastType enum.
+        :param target_type: The target type to be validated.
+        :return: The validated CastType enum or None if validation fails.
+        :raise: :class:`WCPSClientException` if the target type is invalid.
+        :meta private:
+        """
+        if target_type is None:
+            return None
+        if isinstance(target_type, str):
+            target_type = target_type.strip()
+            allowed_types = CastType.list()
+            if target_type not in allowed_types:
+                raise WCPSClientException(f"Invalid target cast type '{target_type}', "
+                                          f"expected one of: {', '.join(allowed_types)}.")
+            return target_type
+        if isinstance(target_type, CastType):
+            return target_type
+        raise WCPSClientException(f"Invalid target type type '{type(target_type)}', "
+                                  f"expected a CastType or a string.")
 
 # ---------------------------------------------------------------------------------
 # aggregation
@@ -2393,19 +2508,6 @@ class Some(UnaryFunc):
         super().__init__(op, 'some')
 
 
-class CondenseOp(StrEnum):
-    """
-    Possible general :class:`Condense` operators.
-    """
-    PLUS = '+'
-    MULTIPLY = '*'
-    MIN = 'min'
-    MAX = 'max'
-    AND = 'and'
-    OR = 'or'
-    OVERLAY = 'overlay'
-
-
 class AxisIter(WCPSExpr):
     """
     An axis iterator expression set in a :meth:`Condense.over` or a :meth:`Coverage.over` methods.
@@ -2428,8 +2530,14 @@ class AxisIter(WCPSExpr):
 
     def __init__(self, var_name: str, axis_name: str):
         super().__init__()
+        if not var_name or var_name == '':
+            raise WCPSClientException("AxisIter var_name cannot be empty.")
+        if not var_name.startswith('$'):
+            var_name = '$' + var_name
         self.var_name = var_name
         """unique iterator variable name"""
+        if not axis_name or axis_name == '':
+            raise WCPSClientException("AxisIter axis_name cannot be empty.")
         self.axis_name = axis_name
         """an axis over which it iterates"""
         self.low = None
@@ -2441,10 +2549,16 @@ class AxisIter(WCPSExpr):
         self.geo_axis = None
         """iterator over a geo axis domain of a coverage"""
 
-    def interval(self, low: int, high: int):
+    def interval(self, low: BoundType, high: BoundType):
         """
         Iterate in the [low, high] interval.
         """
+        if not isinstance(low, BoundType):
+            raise WCPSClientException(f"Interval low bound must be a number of string, got {type(low)} instead.")
+        if not isinstance(high, BoundType):
+            raise WCPSClientException(f"Interval high bound must be a number of string, got {type(low)} instead.")
+        if self.grid_axis is not None or self.geo_axis is not None:
+            raise WCPSClientException("Cannot specify both interval and grid/geo axis domain.")
         self.low = low
         self.high = high
         return self
@@ -2453,6 +2567,12 @@ class AxisIter(WCPSExpr):
         """
         Iterate over the grid axis domain of a coverage ``cov_expr``.
         """
+        if not isinstance(cov_expr, WCPSExpr):
+            raise WCPSClientException(f"cov_expr must be a WCPSExpr object, got {type(cov_expr)} instead.")
+        if self.geo_axis is not None:
+            raise WCPSClientException("Cannot specify both grid and geo axis domain.")
+        if self.low is not None or self.high is not None:
+            raise WCPSClientException("Cannot specify both grid axis domain and interval for iteration.")
         self.grid_axis = cov_expr
         self.add_operand(cov_expr)
         return self
@@ -2461,6 +2581,12 @@ class AxisIter(WCPSExpr):
         """
         Iterate over the geo axis domain of a coverage ``cov_expr``.
         """
+        if not isinstance(cov_expr, WCPSExpr):
+            raise WCPSClientException(f"cov_expr must be a WCPSExpr object, got {type(cov_expr)} instead.")
+        if self.grid_axis is not None:
+            raise WCPSClientException("Cannot specify both geo and grid axis domain.")
+        if self.low is not None or self.high is not None:
+            raise WCPSClientException("Cannot specify both geo axis domain and interval for iteration.")
         self.geo_axis = cov_expr
         self.add_operand(cov_expr)
         return self
@@ -2473,17 +2599,16 @@ class AxisIter(WCPSExpr):
         return AxisIterRef(self)
 
     def __str__(self):
-        iter_spec = ''
         if self.low is not None and self.high is not None:
-            iter_spec = f'{self.low}:{self.high}'
+            iter_spec = f'{self.low} : {self.high}'
         elif self.grid_axis is not None:
             iter_spec = f'imageCrsDomain({self.grid_axis}, {self.axis_name})'
         elif self.geo_axis is not None:
             iter_spec = f'domain({self.geo_axis}, {self.axis_name})'
-        var_name = self.var_name
-        if not var_name:
-            var_name = '$' + var_name
-        return f'{var_name} {self.axis_name}({iter_spec})'
+        else:
+            raise WCPSClientException("No iteration specification provided; "
+                                      "use one of interval(), of_grid_axis(), or of_geo_axis().")
+        return f'{self.var_name} {self.axis_name}({iter_spec})'
 
 
 class AxisIterRef(WCPSExpr):
@@ -2492,15 +2617,32 @@ class AxisIterRef(WCPSExpr):
         :meth:`Condense.where`, :meth:`Condense.using`, or :meth:`Coverage.values` methods.
     """
 
-    def __init__(self, iter_var: AxisIter):
+    def __init__(self, axis_iter: AxisIter):
         super().__init__()
-        self.iter_var = iter_var
+        self.iter_var = axis_iter
+        if not isinstance(axis_iter, AxisIter):
+            raise WCPSClientException(f"Expected an AxisIter object, got {type(axis_iter)} instead.")
 
     def __str__(self):
-        var_name = self.iter_var.var_name
-        if not var_name:
-            var_name = '$' + var_name
-        return var_name
+        return self.iter_var.var_name
+
+
+class CondenseOp(StrEnum):
+    """
+    Possible general :class:`Condense` operators.
+    """
+    PLUS = '+'
+    MULTIPLY = '*'
+    MIN = 'min'
+    MAX = 'max'
+    AND = 'and'
+    OR = 'or'
+    OVERLAY = 'overlay'
+
+    @classmethod
+    def list(cls):
+        """:return: a list of the Enum values."""
+        return list(map(lambda c: c.value, cls))
 
 
 class Condense(WCPSExpr):
@@ -2538,20 +2680,27 @@ class Condense(WCPSExpr):
             .using(cov1[('time', pt_ref)])
     """
 
-    def __init__(self, condense_op: CondenseOp, over: list = None,
+    def __init__(self, condense_op: CondenseOp, over: list[AxisIter] = None,
                  using: WCPSExpr = None, where: WCPSExpr = None):
         operands = [where, using]
         if over is not None:
             operands += over
         super().__init__(operands=operands)
-        self.condense_op = condense_op
+        self.condense_op = self._validate_condense_op(condense_op)
         """
         One of the :class:`CondenseOp` constants, e.g. :const:`CondenseOp.PLUS`
         """
-        self.iter_vars = over if over is not None else []
+        self.iter_vars = []
         """
         A list of :class:`AxisIter` forming the iteration domain for aggregation.
         """
+        if over is not None:
+            if isinstance(over, list):
+                self.iter_vars = over
+            elif isinstance(over, AxisIter):
+                self.iter_vars = [over]
+            else:
+                raise WCPSClientException(f"Expected a list of AxisIter for the OVER clause, but got {type(over)}.")
         self.using_clause = using
         self.where_clause = where
 
@@ -2576,6 +2725,27 @@ class Condense(WCPSExpr):
             raise WCPSClientException("An OVER clause is mandatory in a CONDENSE operation, none was specified.")
         if self.using_clause is None:
             raise WCPSClientException("A USING clause is mandatory in a CONDENSE operation, none was specified.")
+        for v in self.iter_vars:
+            if not isinstance(v, AxisIter):
+                raise WCPSClientException(f"Expected an AxisIter object in OVER clause, got {type(v)} instead.")
+
+    def _validate_condense_op(self, op: Union[CondenseOp, str]) -> Union[CondenseOp, str]:
+        """
+        Validate that the condense_op is a valid CondenseOp member.
+        """
+        if op is None:
+            raise WCPSClientException("No condense operation provided.")
+        if isinstance(op, str):
+            op = op.strip()
+            allowed_ops = CondenseOp.list()
+            if op not in allowed_ops:
+                raise WCPSClientException(f"Invalid condense operation '{op}', "
+                                          f"expected one of: {', '.join(allowed_ops)}.")
+            return op
+        if isinstance(op, CondenseOp):
+            return op
+        raise WCPSClientException(f"Invalid condense operation type '{type(op)}', "
+                                  f"expected a CondenseOp or a string.")
 
     def over(self, iter_var: Union[AxisIter, list[AxisIter]]) -> Condense:
         """
@@ -2595,11 +2765,15 @@ class Condense(WCPSExpr):
         if not isinstance(iter_var, list):
             iter_var = [iter_var]
         for v in iter_var:
+            if not isinstance(v, AxisIter):
+                raise WCPSClientException(f"Expected an AxisIter object in OVER clause, got {type(v)} instead.")
+            if any(v.var_name == e.var_name for e in self.iter_vars):
+                raise WCPSClientException(f"Duplicate iterator variable name: {v.var_name}")
             self.iter_vars.append(v)
             self.add_operand(v)
         return self
 
-    def using(self, using: WCPSExpr) -> Condense:
+    def using(self, using: OperandType) -> Condense:
         """
         Specify an aggregation expression, evaluated for each point in the :meth:`over`
         domain and aggregated into the final result with the :attr:`condense_op`.
@@ -2608,7 +2782,7 @@ class Condense(WCPSExpr):
         self.add_operand(using)
         return self
 
-    def where(self, where: WCPSExpr) -> Condense:
+    def where(self, where: OperandType) -> Condense:
         """
         Specify a filtering expression, evaluated for each point in the :meth:`over`
         domain. If its result is false at that point then the :meth:`using` expression
@@ -2704,7 +2878,8 @@ class Coverage(WCPSExpr):
         if len(self.iter_vars) == 0:
             raise WCPSClientException("An OVER clause is mandatory in a COVERAGE operation, none was specified.")
         if self.values_clause is None and self.value_list_clause is None:
-            raise WCPSClientException("A VALUES or VALUE LIST clause is mandatory in a COVERAGE operation, none was specified.")
+            raise WCPSClientException("A VALUES or VALUE LIST clause is mandatory "
+                                      "in a COVERAGE operation, none was specified.")
 
     def over(self, iter_var: Union[AxisIter, list[AxisIter]]) -> Coverage:
         """
@@ -2898,8 +3073,6 @@ class Clip(WCPSExpr):
                    for geom in self.VALID_GEOMETRIES):
             raise WCPSClientException(f"The given WKT does not contain a valid geometry type."
                                       f"Expected one of: {', '.join(self.VALID_GEOMETRIES)}")
-
-
 
 
 # ---------------------------------------------------------------------------------

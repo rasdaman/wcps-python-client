@@ -189,7 +189,7 @@ def test_coverage_with_interval():
 
     assert str(cov_expr) == (
         "for $cov1 in (cov1)\nreturn\n  "
-        "(coverage intervalCoverage over $pt time(0:10) values $cov1[time($pt)])"
+        "(coverage intervalCoverage over $pt time(0 : 10) values $cov1[time($pt)])"
     )
 
 
@@ -204,7 +204,7 @@ def test_coverage_with_interval_and_params():
                 .params('{ "configOptions": { "GDAL_CACHEMAX": "64" } }'))
     expected_query = (
         'for $cov1 in (cov1)\nreturn\n  '
-        'encode((coverage intervalCoverage over $pt time(0:10) values $cov1[time($pt)]), '
+        'encode((coverage intervalCoverage over $pt time(0 : 10) values $cov1[time($pt)]), '
         '"GTiff", "{ \\"configOptions\\": { \\"GDAL_CACHEMAX\\": \\"64\\" } }")'
     )
 
@@ -229,8 +229,8 @@ def test_clip_linestring1():
                       ' "2008-01-08T00:02:58.000Z" 705042.727359 5454865.55794)')
     clip_expr = Clip(cov1, wkt_linestring)
     expected_query = ("for $cov1 in (cov1)\nreturn\n  "
-                      f"clip($cov1, LINESTRING(\"2008-01-01T02:01:20.000Z\" 75042.7273594 5094865.55794, "
-                      f"\"2008-01-08T00:02:58.000Z\" 705042.727359 5454865.55794))")
+                      "clip($cov1, LINESTRING(\"2008-01-01T02:01:20.000Z\" 75042.7273594 5094865.55794, "
+                      "\"2008-01-08T00:02:58.000Z\" 705042.727359 5454865.55794))")
     assert str(clip_expr) == expected_query
 
 

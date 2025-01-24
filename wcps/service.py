@@ -146,7 +146,7 @@ class Service:
         :raise: :exc:`wcps.model.WCPSClientException` if the server returns an error status code,
             or the result cannot be handled.
         """
-        if isinstance(query_or_result, str) or isinstance(query_or_result, WCPSExpr):
+        if isinstance(query_or_result, (str, WCPSExpr)):
             result = self.execute(query_or_result,
                                   conn_timeout=conn_timeout, read_timeout=read_timeout)
         elif isinstance(query_or_result, WCPSResult):
@@ -155,24 +155,21 @@ class Service:
             raise WCPSClientException(f'Cannot handle showing WCPS query or result '
                                      f'of type {query_or_result.__class__}')
 
-        type = result.type
         data = result.value
 
-        if type == WCPSResultType.SCALAR or type == WCPSResultType.JSON:
+        if result.type in (WCPSResultType.SCALAR, WCPSResultType.JSON):
             print(data)
-        elif type == WCPSResultType.MULTIBAND_SCALAR:
+        elif result.type == WCPSResultType.MULTIBAND_SCALAR:
             print(str(data).replace('[', '{').replace(']', '}'))
-        elif type == WCPSResultType.IMAGE:
-            from PIL import Image
-            from io import BytesIO
-            Image.open(BytesIO(data)).show()
-        elif type == WCPSResultType.NETCDF:
+        elif result.type == WCPSResultType.IMAGE:
+            Image.open(io.BytesIO(data)).show()
+        elif result.type == WCPSResultType.NETCDF:
             with nc.Dataset("memory", mode="r", memory=data) as dataset:
                 print(dataset)
-        elif type == WCPSResultType.NUMPY:
+        elif result.type == WCPSResultType.NUMPY:
             print(data)
         else:
-            raise WCPSClientException(f"Cannot handle showing WCPS result.")
+            raise WCPSClientException("Cannot handle showing WCPS result.")
 
     def execute_raw(self,
                     wcps_query: Union[str, WCPSExpr],
@@ -252,19 +249,19 @@ class Service:
 
         # array result
         if 'image' in content_type:
-            type = WCPSResultType.IMAGE
+            res_type = WCPSResultType.IMAGE
         elif 'netcdf' in content_type:
-            type = WCPSResultType.NETCDF
+            res_type = WCPSResultType.NETCDF
         else:
-            type = WCPSResultType.ARRAY
+            res_type = WCPSResultType.ARRAY
 
         if convert_to_numpy:
             # 2D image formats
-            if type == WCPSResultType.IMAGE:
+            if res_type == WCPSResultType.IMAGE:
                 image = Image.open(io.BytesIO(response.content))
                 return WCPSResult(value=np.array(image), type=WCPSResultType.NUMPY)
             # netcdf
-            if type == WCPSResultType.NETCDF:
+            if res_type == WCPSResultType.NETCDF:
                 with nc.Dataset("memory", mode="r", memory=response.content) as dataset:
 
                     data_arrays = []
@@ -282,7 +279,7 @@ class Service:
                                       f"to a numpy array object.")
 
         # no conversion to numpy
-        return WCPSResult(value=response.content, type=type)
+        return WCPSResult(value=response.content, type=res_type)
 
     @staticmethod
     def _parse_scalar(value: str) -> Union[int | float | bool]:

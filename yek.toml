@@ -1,5 +1,5 @@
 [ignore_patterns]
-patterns = ["wcps/spectral.py", "docs/", "chunk-0.txt"]
+patterns = ["wcps/spectral.py", "docs/", "chunk-0.txt", "tests/"]
 
 [[priority_rules]]
 score = 100
