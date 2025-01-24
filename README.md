@@ -78,6 +78,74 @@ Note that calling this method requires the following dependencies:
 - `pip install pillow` - for image results
 - `pip install netCDF4` - for netcdf results
 
+
+## Geometry Clipping
+
+Non-rectangular subsetting by a geometry shape can be done with
+[Clip](https://rasdaman.github.io/wcps-python-client/autoapi/wcps/model/index.html#wcps.model.Clip).
+It expects a WKT string describing the geometry.
+
+Standard ``LineString``, ``Polygon``, ``MultiLineString`` and ``MultiPolygon``
+geometries are supported, and libraries such as 
+[shapely](https://shapely.readthedocs.io/en/stable/geometry.html)
+or [geomet](https://pypi.org/project/geomet/) could be used to help
+constructing such geometry strings.
+
+More advanced geometries (non-standard WKT), are also supported in rasdaman,
+in particular ``Curtain`` and ``Corridor``; see the
+[rasdaman documentation](https://doc.rasdaman.org/05_geo-services-guide.html#polygon-raster-clipping)
+for more details.
+
+This example showcases clipping a polygon:
+
+```python
+from wcps.model import Datacube, Clip
+
+polygon = """POLYGON(( 51.645 10.772, 51.018 12.551,
+                       50.400 11.716, 50.584 10.051,
+                       51.222 10.142, 51.551 10.522,
+                       51.645 10.772 ))"""
+clip = Clip(Datacube("Germany_DTM_4"), polygon)
+
+color_map = ('{"colorMap":{"type":"intervals","colorTable":{'
+             '"0":[0,0,255,0],"15":[0,140,0,255],'
+             '"30":[0,180,0,255],"50":[255,193,0,255],'
+             '"100":[255,154,0,255],"150":[255,116,0,255],'
+             '"200":[255,77,0,255],"500":[255,0,0,255]}}}')
+
+from wcps.service import Service
+service = Service("https://ows.rasdaman.org/rasdaman/ows")
+service.show(clip.encode("image/png").params(color_map))
+```
+
+In the next example we extract a trajectory over the Germany DEM.
+The result of this WCPS query is a 1-D series of height values along
+the specified LineString.
+
+```python
+from wcps.model import Datacube, Clip
+
+line = """LineString( 52.8691 7.7124, 50.9861 6.8335,
+                      49.5965 7.6904, 48.3562 9.0308, 
+                      48.0634 11.9531, 51.0966 13.7988,
+                      53.3440 13.5571, 53.8914 12.3926 )"""
+clip = Clip(Datacube("Germany_DTM_4"), line)
+
+from wcps.service import Service
+service = Service("https://ows.rasdaman.org/rasdaman/ows")
+result = service.execute(clip.encode("application/json"))
+
+# visualize the result as a diagram; requires:
+# pip install matplotlib
+import matplotlib.pyplot as plt
+plt.plot(result.value)
+plt.title('Height along linestring')
+plt.xlabel('Coordinate')
+plt.ylabel('Height')
+plt.show()
+```
+
+
 ## Band Math
 
 Derive an [NDVI](https://en.wikipedia.org/wiki/Normalized_difference_vegetation_index) 
@@ -158,7 +226,7 @@ object:
 
 ```python
 from wcps.service import Service
-from wcps.model import Datacube, MultiBand
+from wcps.model import Datacube, MultiBand, rgb
 
 # defined in previous example
 subset = ...
@@ -169,6 +237,9 @@ nir = Datacube("S2_L2A_32631_B08_10m")[subset]
 
 # false-color composite
 false_color = MultiBand({"red": nir, "green": red, "blue": green})
+
+# alternatively, use the rgb method shorthand:
+false_color = rgb(nir, red, green)
 
 # scale the cell values to fit in the 0-255 range suitable for PNG
 scaled = false_color / 17.0
@@ -187,7 +258,7 @@ we combine B12 from a 20m coverage, and B8 / B3 from a higher resolution 10m cov
 
 ```python
 from wcps.service import Service
-from wcps.model import Datacube, MultiBand
+from wcps.model import Datacube, rgb
 
 # defined in previous example
 subset = ...
@@ -196,11 +267,12 @@ green = Datacube("S2_L2A_32631_B03_10m")[subset]
 swir = Datacube("S2_L2A_32631_B12_20m")[subset]
 nir = Datacube("S2_L2A_32631_B08_10m")[subset]
 
-# upscale swir to match the resolution of green
+# upscale swir to match the resolution of green;
+# interpolation is fixed to nearest-neighbour
 swir = swir.scale(another_coverage=green)
 
 # false-color composite
-composite = MultiBand({"red": swir, "green": nir, "blue": green})
+composite = rgb(swir, nir, green)
 
 # scale the cell values to fit in the 0-255 range suitable for PNG
 scaled = composite / 17.0
@@ -231,7 +303,8 @@ result = service.execute(query)
 print(f'The average NDVI is {result.value}')
 ```
 
-Other reduce methods include `sum()`, `max()`, `min()`, `all()`, `some()`.
+Other aggregation functions include `sum()`, `max()`, `min()`, `all()`, `some()`,
+``
 
 ## Timeseries Aggregation
 
@@ -288,7 +361,7 @@ averages = Coverage("average_per_date") \
 query = averages.encode("JSON")
 
 service = Service("https://ows.rasdaman.org/rasdaman/ows")
-result = service.execute(query, query)
+result = service.execute(query)
 
 # print result
 print(result.value)
@@ -332,6 +405,7 @@ plt.xlabel('Date')
 plt.ylabel('Average')
 plt.show()
 ```
+
 
 ## Convolution
 

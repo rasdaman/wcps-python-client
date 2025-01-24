@@ -2847,8 +2847,47 @@ class Switch(WCPSExpr):
 
 class Clip(WCPSExpr):
     """
-    TODO
+    Clip ``op`` with the given WKT string. For supported WKT parameters see
+    https://doc.rasdaman.org/05_geo-services-guide.html#polygon-raster-clipping
+
+    Examples:
+
+    .. code:: python
+
+        c = Datacube("cov")
+        Clip(c, "POLYGON((13589894.568 -2015496.69612, 15086830.0246 -1780682.3822))")
+
+        Clip(c, 'LineString("2008-01-01T02:01:20.000Z" 75042.7273594 5094865.55794,
+                            "2008-01-08T00:02:58.000Z" 705042.727359 5454865.55794)')
+
+        Clip(c, "Multipolygon( ((-23.189600 118.432617, -27.458321 117.421875,
+                                 -30.020354 126.562500, -24.295789 125.244141)),
+                               ((-27.380304 137.768555, -30.967012 147.700195,
+                                 -25.491629 151.259766, -18.050561 142.075195)) )")
+
+        Clip(c, "CURTAIN(projection(Lat, Long),
+                         Polygon((25 40, 30 40, 30 45, 30 42)) )")
+
+        Clip(c, 'CORRIDOR(projection(E, N),
+                          LineString("2008-01-01T02:01:20.000Z" 75042.7273594  5094865.55794,
+                                     "2008-01-01T02:01:20.000Z" 75042.7273594 5194865.55794),
+                          LineString(75042.7273594 5094865.55794, 75042.7273594 5094865.55794,
+                                     85042.7273594 5194865.55794, 95042.7273594 5194865.55794) )')
+
+        Clip(c, 'CORRIDOR(projection(Lat, Long),
+                          LineString(26 41 "1950-01-01", 28 41 "1950-01-02"),
+                          Polygon((25 40, 30 40, 30 45, 25 45)), discrete)')
+
+    :param op: coverage expression to clip
+    :param wkt: a WKT string describing the geometry for clipping
     """
+
+    def __init__(self, op: WCPSExpr, wkt: str):
+        super().__init__(operands=[op])
+        self.wkt = wkt
+
+    def __str__(self):
+        return f'{super().__str__()}clip({self.operands[0]}, {self.wkt})'
 
 
 # ---------------------------------------------------------------------------------
