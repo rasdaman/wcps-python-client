@@ -1,10 +1,12 @@
 import math
 
+import pytest
+
 from wcps.model import (Datacube, Exp, Log, Ln, Sqrt, Pow, Sin, Cos, Tan,
                         Sinh, Cosh, Tanh, ArcSin, ArcCos, ArcTan, ArcTan2, And,
                         Or, Xor, Not, Overlay, Bit, Band, MultiBand, Axis, Extend, Scale,
                         Reproject, ResampleAlg, Cast, CastType, Sum, Avg, Count, Min, Max,
-                        All, Some, AxisIter, Condense, CondenseOp, Coverage, Switch, Encode)
+                        All, Some, AxisIter, Condense, CondenseOp, Coverage, Switch, Encode, WCPSClientException)
 
 cov1 = Datacube("cov1")
 cov2 = Datacube("cov2")
@@ -173,11 +175,106 @@ def test_coverage():
             "values $cov1[Lat($pLat), Lon($pLon)])")
 
 
+def test_encode():
+    assert str(Encode(cov1, "PNG")) == 'for $cov1 in (cov1)\nreturn\n  encode($cov1, "PNG")'
+    assert str(Encode(cov1, "PNG", "params")) == \
+           'for $cov1 in (cov1)\nreturn\n  encode($cov1, "PNG", "params")'
+
+def test_encode_to_png():
+    encode_expr = Encode(cov1, "PNG")
+    expected_query = "for $cov1 in (cov1)\nreturn\n  encode($cov1, \"PNG\")"
+    assert str(encode_expr) == expected_query
+
+def test_encode_with_params():
+    encode_expr = Encode(cov1, "PNG").params('{"compression":"lzw"}')
+    expected_query = 'for $cov1 in (cov1)\nreturn\n  encode($cov1, "PNG", "{\\"compression\\":\\"lzw\\"}")'
+    assert str(encode_expr) == expected_query
+
+def test_encode_no_format():
+    with pytest.raises(WCPSClientException):
+        str(Encode(cov1))
+
+# -------------------------------------------------------------------------------------
+# Switch
+
 def test_switch():
     assert str(Switch().case(cov1 > 5).then(cov2).default(cov1)) == \
            ('for $cov1 in (cov1), $cov2 in (cov2)\nreturn\n  '
             '(switch case ($cov1 > 5) return $cov2 default return $cov1)')
 
-    assert str(Encode(cov1, "PNG")) == 'for $cov1 in (cov1)\nreturn\n  encode($cov1, "PNG")'
-    assert str(Encode(cov1, "PNG", "params")) == \
-           'for $cov1 in (cov1)\nreturn\n  encode($cov1, "PNG", "params")'
+
+def test_switch_no_default():
+    # Creating a Switch expression without a default case should raise an exception
+    with pytest.raises(WCPSClientException):
+        str(Switch().case(cov1 > 5).then(cov2))
+
+
+def test_switch_multiple_cases():
+    cov3 = Datacube("cov3")
+    switch_expr = (Switch()
+                   .case(cov1 > 5).then(cov2)
+                   .case(cov1 < 3).then(cov3)
+                   .default(cov1))
+    expected_query = ("for $cov1 in (cov1), $cov2 in (cov2), $cov3 in (cov3)\n"
+                      "return\n  (switch "
+                      "case ($cov1 > 5) return $cov2 "
+                      "case ($cov1 < 3) return $cov3 "
+                      "default return $cov1)")
+    assert str(switch_expr) == expected_query
+
+
+def test_switch_invalid_order():
+    with pytest.raises(WCPSClientException):
+        Switch().default(cov1).case(cov1 > 5).then(cov1)
+
+
+def test_nested_switch_expression():
+    cov3 = Datacube("cov3")
+    cov4 = Datacube("cov4")
+    switch_expr = (Switch()
+                   .case(cov1 > 5)
+                   .then(Switch()
+                         .case(cov2 > 10)
+                         .then(cov3)
+                         .default(cov4))
+                   .default(cov1))
+    expected_query = ("for $cov1 in (cov1), $cov2 in (cov2), $cov3 in (cov3), $cov4 in (cov4)\n"
+                      "return\n  "
+                      "(switch case ($cov1 > 5) return "
+                      "(switch case ($cov2 > 10) return $cov3 default return $cov4) "
+                      "default return $cov1)")
+    assert str(switch_expr) == expected_query
+
+
+def test_nested_switch_invalid_default_order():
+    with pytest.raises(WCPSClientException):
+        Switch().case(cov1 > 5).then(
+            Switch().default(cov2).case(cov1 < 3).then(cov2)
+        ).default(cov1)
+
+
+def test_scalar_case_input():
+    switch_expr = Switch().case(5).then(cov1).default(cov2)
+    expected_query = ("for $cov1 in (cov1), $cov2 in (cov2)\n"
+                      "return\n  (switch "
+                      "case 5 return $cov1 "
+                      "default return $cov2)")
+    assert str(switch_expr) == expected_query
+
+
+def test_scalar_then_input():
+    switch_expr = Switch().case(cov1).then(5).default(cov2)
+    expected_query = ("for $cov1 in (cov1), $cov2 in (cov2)\n"
+                      "return\n  (switch "
+                      "case $cov1 return 5 "
+                      "default return $cov2)")
+    assert str(switch_expr) == expected_query
+
+
+def test_scalar_default_input():
+    switch_expr = Switch().case(cov1).then(cov2).default(5)
+    expected_query = ("for $cov1 in (cov1), $cov2 in (cov2)\n"
+                      "return\n  (switch "
+                      "case $cov1 return $cov2 "
+                      "default return 5)")
+    assert str(switch_expr) == expected_query

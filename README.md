@@ -46,6 +46,11 @@ by passing `convert_to_numpy=True` to the execute method.
 from wcps.service import Service
 
 service = Service("https://ows.rasdaman.org/rasdaman/ows")
+
+# if credentials are required:
+# service = Service("https://ows.rasdaman.org/rasdaman/ows",
+#                   username=..., password=...)
+
 result = service.execute(query)
 # or automatically convert the result to a numpy array
 result = service.execute(query, convert_to_numpy=True)

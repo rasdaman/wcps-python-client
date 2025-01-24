@@ -1,0 +1,18 @@
+[ignore_patterns]
+patterns = ["wcps/spectral.py", "docs/", "chunk-0.txt"]
+
+[[priority_rules]]
+score = 100
+patterns = ["README.md"]
+
+[[priority_rules]]
+score = 90
+patterns = ["wcps/service.py"]
+
+[[priority_rules]]
+score = 80
+patterns = ["wcps/model.py"]
+
+[[priority_rules]]
+score = 70
+patterns = ["tests/"]

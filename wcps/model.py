@@ -18,6 +18,7 @@ from __future__ import annotations
 from collections import deque
 from enum import StrEnum
 from typing import Union, Optional
+import re
 
 
 class WCPSExpr:
@@ -2427,7 +2428,7 @@ class AxisIter(WCPSExpr):
         elif self.geo_axis is not None:
             iter_spec = f'domain({self.geo_axis}, {self.axis_name})'
         var_name = self.var_name
-        if not self.var_name.startswith('$'):
+        if not var_name:
             var_name = '$' + var_name
         return f'{var_name} {self.axis_name}({iter_spec})'
 
@@ -2443,7 +2444,10 @@ class AxisIterRef(WCPSExpr):
         self.iter_var = iter_var
 
     def __str__(self):
-        return f'${self.iter_var.var_name}'
+        var_name = self.iter_var.var_name
+        if not var_name:
+            var_name = '$' + var_name
+        return var_name
 
 
 class Condense(WCPSExpr):
@@ -2496,7 +2500,7 @@ class Condense(WCPSExpr):
         A list of :class:`AxisIter` forming the iteration domain for aggregation.
         """
         self.using_clause = using
-        self.where_where = where
+        self.where_clause = where
 
     def __str__(self):
         """
@@ -2506,8 +2510,8 @@ class Condense(WCPSExpr):
         self._validate()
         over = _list_to_str(self.iter_vars, ', ')
         ret = f'{super().__str__()}(condense {self.condense_op} over {over}'
-        if self.where_where is not None:
-            ret += f' where {self.where_where}'
+        if self.where_clause is not None:
+            ret += f' where {self.where_clause}'
         ret += f' using {self.using_clause})'
         return ret
 
@@ -2554,7 +2558,7 @@ class Condense(WCPSExpr):
         domain. If its result is false at that point then the :meth:`using` expression
         is not executed.
         """
-        self.where_where = where
+        self.where_clause = where
         self.add_operand(where)
         return self
 
@@ -2829,9 +2833,17 @@ class Encode(WCPSExpr):
             raise WCPSClientException("No target format to which to encode the operand was provided.")
         ret = f'{super().__str__()}encode({self.operands[0]}, "{self.data_format}"'
         if self.format_params is not None:
-            ret += f', "{self.format_params}"'
+            format_params = self._escape_double_quotes(self.format_params)
+            ret += f', "{format_params}"'
         ret += ')'
         return ret
+
+    def _escape_double_quotes(self, text: str) -> str:
+        """
+        Escape double quotes in a string by prefixing them with a backslash,
+        but only if they are not already escaped.
+        """
+        return re.sub(r'(?<!\\)"', r'\\"', text)
 
 
 class WCPSClientException(Exception):
