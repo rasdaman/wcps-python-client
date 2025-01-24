@@ -6,10 +6,13 @@ from wcps.model import (Datacube, Exp, Log, Ln, Sqrt, Pow, Sin, Cos, Tan,
                         Sinh, Cosh, Tanh, ArcSin, ArcCos, ArcTan, ArcTan2, And,
                         Or, Xor, Not, Overlay, Bit, Band, MultiBand, Axis, Extend, Scale,
                         Reproject, ResampleAlg, Cast, CastType, Sum, Avg, Count, Min, Max,
-                        All, Some, AxisIter, Condense, CondenseOp, Coverage, Switch, Encode, WCPSClientException)
+                        All, Some, AxisIter, Condense, CondenseOp, Coverage, Switch, Encode,
+                        Clip, WCPSClientException)
 
 cov1 = Datacube("cov1")
 cov2 = Datacube("cov2")
+cov3 = Datacube("cov3")
+cov4 = Datacube("cov4")
 
 
 def test_arithmetic():
@@ -218,10 +221,23 @@ def test_coverage_no_values():
     with pytest.raises(WCPSClientException):
         str(Coverage('noValuesCoverage').over(lat_var))
 
+# -------------------------------------------------------------------------------------
+# Clip
 
-def test_coverage_with_nested_condense():
+def test_clip_linestring1():
+    wkt_linestring = ('LINESTRING("2008-01-01T02:01:20.000Z" 75042.7273594 5094865.55794,'
+                      ' "2008-01-08T00:02:58.000Z" 705042.727359 5454865.55794)')
+    clip_expr = Clip(cov1, wkt_linestring)
+    expected_query = ("for $cov1 in (cov1)\nreturn\n  "
+                      f"clip($cov1, LINESTRING(\"2008-01-01T02:01:20.000Z\" 75042.7273594 5094865.55794, "
+                      f"\"2008-01-08T00:02:58.000Z\" 705042.727359 5454865.55794))")
+    assert str(clip_expr) == expected_query
 
 
+def test_clip_invalid_wkt():
+    invalid_wkt = "INVALID_WKT"
+    with pytest.raises(WCPSClientException, match="WKT does not contain a valid geometry type"):
+        Clip(cov1, invalid_wkt)
 
 # -------------------------------------------------------------------------------------
 # Encode
@@ -265,7 +281,6 @@ def test_switch_no_default():
 
 
 def test_switch_multiple_cases():
-    cov3 = Datacube("cov3")
     switch_expr = (Switch()
                    .case(cov1 > 5).then(cov2)
                    .case(cov1 < 3).then(cov3)
@@ -284,8 +299,6 @@ def test_switch_invalid_order():
 
 
 def test_nested_switch_expression():
-    cov3 = Datacube("cov3")
-    cov4 = Datacube("cov4")
     switch_expr = (Switch()
                    .case(cov1 > 5)
                    .then(Switch()

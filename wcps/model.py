@@ -2881,13 +2881,25 @@ class Clip(WCPSExpr):
     :param op: coverage expression to clip
     :param wkt: a WKT string describing the geometry for clipping
     """
+    VALID_GEOMETRIES = ['LineString', 'Polygon', 'MultiLineString',
+                        'MultiPolygon', 'Curtain', 'Corridor']
 
     def __init__(self, op: WCPSExpr, wkt: str):
         super().__init__(operands=[op])
-        self.wkt = wkt
+        self.wkt = str(wkt)
+        self._validate_wkt()
 
     def __str__(self):
         return f'{super().__str__()}clip({self.operands[0]}, {self.wkt})'
+
+    def _validate_wkt(self):
+        """Check that the WKT contains a valid geometry type."""
+        if not any(re.search(r'\b' + re.escape(geom) + r'\b', self.wkt, re.IGNORECASE)
+                   for geom in self.VALID_GEOMETRIES):
+            raise WCPSClientException(f"The given WKT does not contain a valid geometry type."
+                                      f"Expected one of: {', '.join(self.VALID_GEOMETRIES)}")
+
+
 
 
 # ---------------------------------------------------------------------------------
