@@ -8,3 +8,6 @@ __pycache__
 # documentation
 autoapi
 _build
+
+# testing
+test.py

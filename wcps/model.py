@@ -15,10 +15,10 @@ that can be sent to a WCPS server.
 # https://stackoverflow.com/a/33533514
 from __future__ import annotations
 
+import re
 from collections import deque
 from enum import StrEnum
 from typing import Union, Optional
-import re
 
 
 class WCPSExpr:
@@ -1868,6 +1868,39 @@ class MultiBand(WCPSExpr):
         return f'{super().__str__()}{{{"; ".join(bands)}}}'
 
 
+def rgb(r: OperandType, g: OperandType, b: OperandType) -> MultiBand:
+    """
+    Utility method for conveniently specifying RGB (red, green, blue) multiband values.
+    Examples:
+
+    - ``rgb(255,255,255)``
+    - ``rgb(red_cov, blue_cov, 0)``
+
+    :param r: red band
+    :param g: green band
+    :param b: blue band
+    :return: a MultiBand object with red, green and blue bands correspondingly.
+    """
+    return MultiBand({'red': r, 'green': g, 'blue': b})
+
+
+def rgba(r: OperandType, g: OperandType, b: OperandType, a: OperandType) -> MultiBand:
+    """
+    Utility method for conveniently specifying RGBA (red, green, blue, alpha) multiband values.
+    Examples:
+
+    - ``rgb(255,255,255,255)``
+    - ``rgb(red_cov, blue_cov, 0, 255)``
+
+    :param r: red band
+    :param g: green band
+    :param b: blue band
+    :param a: alpha band
+    :return: a MultiBand object with red, green, blue and alpha bands correspondingly.
+    """
+    return MultiBand({'red': r, 'green': g, 'blue': b, 'alpha': a})
+
+
 # ---------------------------------------------------------------------------------
 # subsetting, extend, scale
 
@@ -1921,22 +1954,42 @@ class Axis(WCPSExpr):
         if isinstance(axes, tuple):
             if isinstance(axes[0], Axis):
                 # $c[Axis(..), Axis(..), ..]
+                for a in axes:
+                    if not isinstance(a, Axis):
+                        raise WCPSClientException("Mixed types of axis specifications provided, "
+                                                  "expected all objects to be of type Axis.")
                 return list(axes)
             if isinstance(axes[0], str):
                 # $c[("X", ..)]
                 return [Axis(*axes)]
             if isinstance(axes[0], tuple):
                 # $c[("X", ..), ("Y", ..), ..]
+                for a in axes:
+                    if not isinstance(a, tuple):
+                        raise WCPSClientException("Mixed types of axis specifications provided, "
+                                                  "expected all objects to be of type tuple.")
                 return [Axis(*axis) for axis in axes]
             if isinstance(axes[0], slice):
+                for a in axes:
+                    if not isinstance(a, slice):
+                        raise WCPSClientException("Mixed types of axis specifications provided, "
+                                                  "expected all objects to be of type slice.")
                 return [Axis(axis_name=axis.start, low=axis.stop, high=axis.step)
                         for axis in axes]
         if isinstance(axes, list):
             if isinstance(axes[0], Axis):
                 # $c[Axis(..), Axis(..), ..]
+                for a in axes:
+                    if not isinstance(a, Axis):
+                        raise WCPSClientException("Mixed types of axis specifications provided, "
+                                                  "expected all objects to be of type Axis.")
                 return axes
             if isinstance(axes[0], tuple):
                 # $c[("X", ..), ("Y", ..), ..]
+                for a in axes:
+                    if not isinstance(a, tuple):
+                        raise WCPSClientException("Mixed types of axis specifications provided, "
+                                                  "expected all objects to be of type tuple.")
                 return [Axis(*axis) for axis in axes]
 
         raise WCPSClientException("Invalid subsetting operation, expected one or more Axis objects, "
@@ -2524,7 +2577,7 @@ class Condense(WCPSExpr):
         if self.using_clause is None:
             raise WCPSClientException("A USING clause is mandatory in a CONDENSE operation, none was specified.")
 
-    def over(self, iter_var: AxisIter) -> Condense:
+    def over(self, iter_var: Union[AxisIter, list[AxisIter]]) -> Condense:
         """
         Add an iterator variable to a `Condense` or a `Coverage` operand.
         Calling this method on another object type will raise a `WCPSClientException`.
@@ -2539,8 +2592,11 @@ class Condense(WCPSExpr):
             px_var = AxisIter('$px', 'X').interval(0, 100)
             cov.condense(CondenseOp.PLUS).over(pt_var).over(px_var)
         """
-        self.iter_vars.append(iter_var)
-        self.add_operand(iter_var)
+        if not isinstance(iter_var, list):
+            iter_var = [iter_var]
+        for v in iter_var:
+            self.iter_vars.append(v)
+            self.add_operand(v)
         return self
 
     def using(self, using: WCPSExpr) -> Condense:
@@ -2581,7 +2637,10 @@ class Coverage(WCPSExpr):
 
     :param name: a name for the new coverage
     :param over: a list of axis iterators
-    :param values_clause: an expression evaluating to a value for each point in the over domain
+    :param values_clause: an expression evaluating to a value for each point in the over domain;
+        exclusive with ``value_list_clause``.
+    :param value_list_clause: a list enumerating all cell values in the coverage domain;
+        exclusive with ``values_clause``.
 
     For example, to create a 2D geo-referenced coverage with
     Lat and Lon axes, based on an existing geo-referenced coverage ``mycov``: ::
@@ -2597,7 +2656,9 @@ class Coverage(WCPSExpr):
                          ('Lon', plon_var.ref())]))
     """
 
-    def __init__(self, name: str, over: list = None, values_clause: WCPSExpr = None):
+    def __init__(self, name: str, over: list = None,
+                 values_clause: OperandType = None,
+                 value_list_clause: list[ScalarType] = None):
         operands = [values_clause]
         if over is not None:
             operands += over
@@ -2614,6 +2675,12 @@ class Coverage(WCPSExpr):
         """
         An expression evaluated for each point in the coverage domain.
         """
+        self.value_list_clause = value_list_clause
+        """
+        A list enumerating all cell values in the coverage domain.
+        """
+        if self.value_list_clause is not None and self.values_clause is not None:
+            raise WCPSClientException("Cannot specify both a values_clause and a values_list in a Coverage expression.")
 
     def __str__(self):
         """
@@ -2623,7 +2690,11 @@ class Coverage(WCPSExpr):
         self._validate()
         ret = super().__str__()
         over = _list_to_str(self.iter_vars, ', ')
-        ret += f'(coverage {self.name} over {over} values {self.values_clause})'
+        if self.values_clause is not None:
+            ret += f'(coverage {self.name} over {over} values {self.values_clause})'
+        else:
+            values_list_clause = _list_to_str(self.value_list_clause, "; ")
+            ret += f'(coverage {self.name} over {over} value list < {values_list_clause} >)'
         return ret
 
     def _validate(self):
@@ -2632,14 +2703,14 @@ class Coverage(WCPSExpr):
         """
         if len(self.iter_vars) == 0:
             raise WCPSClientException("An OVER clause is mandatory in a COVERAGE operation, none was specified.")
-        if self.values_clause is None:
-            raise WCPSClientException("A VALUES clause is mandatory in a COVERAGE operation, none was specified.")
+        if self.values_clause is None and self.value_list_clause is None:
+            raise WCPSClientException("A VALUES or VALUE LIST clause is mandatory in a COVERAGE operation, none was specified.")
 
-    def over(self, iter_var: AxisIter) -> Coverage:
+    def over(self, iter_var: Union[AxisIter, list[AxisIter]]) -> Coverage:
         """
         Add an iterator variable to the coverage constructor.
 
-        :param iter_var: an iterator variable
+        :param iter_var: an iterator variable or a list of iterator variables
         :return: the same object with the ``iter_var`` appended to its iterator variables list
 
         Examples: ::
@@ -2649,16 +2720,30 @@ class Coverage(WCPSExpr):
             px_var = AxisIter('$px', 'X').interval(0, 100)
             cov.condense(CondenseOp.PLUS).over(pt_var).over(px_var)
         """
-        self.iter_vars.append(iter_var)
-        self.add_operand(iter_var)
+        if not isinstance(iter_var, list):
+            iter_var = [iter_var]
+        for v in iter_var:
+            self.iter_vars.append(v)
+            self.add_operand(v)
         return self
 
-    def values(self, values_clause) -> Coverage:
+    def values(self, values_clause: OperandType) -> Coverage:
         """
         Specify a VALUES expression, evaluated for each point in the :meth:`over` domain.
         """
+        if self.value_list_clause is not None:
+            raise WCPSClientException("Cannot specify both a values and a values_list in a Coverage expression.")
         self.values_clause = values_clause
         self.add_operand(values_clause)
+        return self
+
+    def value_list(self, value_list_clause: list[ScalarType]) -> Coverage:
+        """
+        Specify a VALUE LIST expression, enumerating all values in the :meth:`over` domain.
+        """
+        if self.values_clause is not None:
+            raise WCPSClientException("Cannot specify both a values and a values_list in a Coverage expression.")
+        self.value_list_clause = value_list_clause
         return self
 
 
@@ -2755,6 +2840,15 @@ class Switch(WCPSExpr):
         self.default_expr = default_expr
         self.add_operand(default_expr)
         return self
+
+
+# ---------------------------------------------------------------------------------
+# clipping
+
+class Clip(WCPSExpr):
+    """
+    TODO
+    """
 
 
 # ---------------------------------------------------------------------------------

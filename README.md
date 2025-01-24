@@ -1,3 +1,5 @@
+from model import MultiBand
+
 # Overview
 
 The [OGC Web Coverage Processing Service (WCPS) standard](https://www.ogc.org/standards/wcps)
@@ -233,8 +235,9 @@ Other reduce methods include `sum()`, `max()`, `min()`, `all()`, `some()`.
 
 ## Timeseries Aggregation
 
-A more advanced expression is the *general condenser* (aggregation)
-operation. The example calculates a map with maximum cell values across all time slices 
+A more advanced expression is the 
+[general condenser](https://rasdaman.github.io/wcps-python-client/autoapi/wcps/model/index.html#wcps.model.Condense) 
+(aggregation) operation. The example calculates a map with maximum cell values across all time slices 
 from a 3D datacube between "2015-01-01" and "2015-07-01", considering only the
 time slices with an average greater than 20:
 
@@ -260,7 +263,9 @@ service.download(query, 'max_map.png')
 ```
 
 How about calculating the average of each time slice between two dates? 
-This can be done with a *coverage constructor*, which will iterate over all dates 
+This can be done with a
+[coverage constructor](https://rasdaman.github.io/wcps-python-client/autoapi/wcps/model/index.html#wcps.model.Condense),
+which will iterate over all dates 
 between the two given dates, resulting in a 1D array of average NDVI values;
 notice that the slicing on the time axis ansi is done with the "iterator" variable `ansi_iter`
 like in the previous example. The 1D array is encoded as JSON in the end.
@@ -326,6 +331,86 @@ plt.title('Average per Date')
 plt.xlabel('Date')
 plt.ylabel('Average')
 plt.show()
+```
+
+## Convolution
+
+The [coverage constructor](https://rasdaman.github.io/wcps-python-client/autoapi/wcps/model/index.html#wcps.model.Condense)
+supports also enumerating the cell values in place as a list of numbers.
+This allows to specify small arrays such as
+[convolution kernels](https://en.wikipedia.org/wiki/Kernel_(image_processing)),
+enabling more advanced image processing operation. The example below uses a
+[Sobel operator](https://en.wikipedia.org/wiki/Sobel_operator)
+to perform edge detection on an image on the server, before downloading the result.
+
+```python
+from wcps.service import Service
+from wcps.model import Datacube, Coverage, Condense, \
+    AxisIter, CondenseOp
+
+# kernels
+x = AxisIter('$x', 'x').interval(-1, 1)
+y = AxisIter('$y', 'y').interval(-1, 1)
+kernel1 = (Coverage('kernel1').over([x, y])
+           .value_list([1, 0, -1, 2, 0, -2, 1, 0, -1]))
+kernel2 = (Coverage('kernel2').over([x, y])
+           .value_list([1, 2, 1, 0, 0, 0, -1, -2, -1]))
+
+# coverage axis iterators
+cov = Datacube("NIR")
+subset = [( "i", 10, 500 ), ( "j", 10, 500 )]
+cx = AxisIter('$px', 'i').of_grid_axis(cov[subset])
+cy = AxisIter('$py', 'j').of_grid_axis(cov[subset])
+
+# kernel axis iterators
+kx = AxisIter('$kx', 'x').interval(-1, 1)
+ky = AxisIter('$ky', 'y').interval(-1, 1)
+
+gx = (Coverage('Gx').over([cx, cy])
+      .values(Condense(CondenseOp.PLUS).over([kx, ky])
+              .using(kernel1["x": kx.ref(), "y": ky.ref()] *
+                     cov.green["i": cx.ref() + kx.ref(),
+                               "j": cy.ref() + ky.ref()])
+              )
+      ).pow(2.0)
+
+gy = (Coverage('Gy').over([cx, cy])
+      .values(Condense(CondenseOp.PLUS).over([kx, ky])
+              .using(kernel2["x": kx.ref(), "y": ky.ref()] *
+                     cov.green["i": cx.ref() + kx.ref(),
+                               "j": cy.ref() + ky.ref()])
+              )
+      ).pow(2.0)
+
+query = (gx + gy).sqrt().encode("image/jpeg")
+
+service = Service("https://ows.rasdaman.org/rasdaman/ows")
+service.download(query, 'convolution.png')
+```
+
+## Case Distinction
+
+Conditional evaluation is possible with
+[Switch](https://rasdaman.github.io/wcps-python-client/autoapi/wcps/model/index.html#wcps.model.Switch):
+
+```python
+from wcps.service import Service
+from wcps.model import Datacube, Switch, rgb
+
+cov = Datacube("AvgLandTemp")["ansi": "2014-07",
+                              "Lat": 35: 75,
+                              "Long": -20: 40]
+switch = (Switch()
+          .case(cov == 99999).then(rgb(255, 255, 255))
+          .case(cov < 18).then(rgb(0, 0, 255))
+          .case(cov < 23).then(rgb(255, 255, 0))
+          .case(cov < 30).then(rgb(255, 140, 0))
+          .default(rgb(255, 0, 0)))
+
+query = switch.encode("image/png")
+
+service = Service("https://ows.rasdaman.org/rasdaman/ows")
+service.show(query)
 ```
 
 ## User-Defined Functions (UDF)

@@ -161,7 +161,10 @@ def test_condense():
             "using ($cov1[time($pt)] * $px))")
 
 
-def test_coverage():
+# -------------------------------------------------------------------------------------
+# Coverage
+
+def test_coverage_of_geo_axis():
     plat_var = AxisIter('$pLat', 'Lat').of_geo_axis(cov1['Lat', -30, -28.5])
     plon_var = AxisIter('$pLon', 'Lon').of_geo_axis(cov1['Lon', 111.975, 113.475])
     cov_expr = (Coverage('targetCoverage')
@@ -175,24 +178,76 @@ def test_coverage():
             "values $cov1[Lat($pLat), Lon($pLon)])")
 
 
+def test_coverage_with_interval():
+    time_var = AxisIter('$pt', 'time').interval(0, 10)
+    cov_expr = (Coverage('intervalCoverage')
+                .over(time_var)
+                .values(cov1['time', time_var.ref()]))
+
+    assert str(cov_expr) == (
+        "for $cov1 in (cov1)\nreturn\n  "
+        "(coverage intervalCoverage over $pt time(0:10) values $cov1[time($pt)])"
+    )
+
+
+def test_coverage_with_interval_and_params():
+    time_var = AxisIter('$pt', 'time').interval(0, 10)
+
+    # Create a Coverage expression with additional parameters
+    cov_expr = ((Coverage('intervalCoverage')
+                 .over(time_var)
+                 .values(cov1['time', time_var.ref()]))
+                .encode('GTiff')
+                .params('{ "configOptions": { "GDAL_CACHEMAX": "64" } }'))
+    expected_query = (
+        'for $cov1 in (cov1)\nreturn\n  '
+        'encode((coverage intervalCoverage over $pt time(0:10) values $cov1[time($pt)]), '
+        '"GTiff", "{ \\"configOptions\\": { \\"GDAL_CACHEMAX\\": \\"64\\" } }")'
+    )
+
+    assert str(cov_expr) == expected_query
+
+
+def test_coverage_no_axes():
+    with pytest.raises(WCPSClientException):
+        str(Coverage('noAxesCoverage').values(cov1))
+
+
+def test_coverage_no_values():
+    lat_var = AxisIter('$pLat', 'Lat').of_geo_axis(cov1['Lat', -30, -28.5])
+    with pytest.raises(WCPSClientException):
+        str(Coverage('noValuesCoverage').over(lat_var))
+
+
+def test_coverage_with_nested_condense():
+
+
+
+# -------------------------------------------------------------------------------------
+# Encode
+
 def test_encode():
     assert str(Encode(cov1, "PNG")) == 'for $cov1 in (cov1)\nreturn\n  encode($cov1, "PNG")'
     assert str(Encode(cov1, "PNG", "params")) == \
            'for $cov1 in (cov1)\nreturn\n  encode($cov1, "PNG", "params")'
+
 
 def test_encode_to_png():
     encode_expr = Encode(cov1, "PNG")
     expected_query = "for $cov1 in (cov1)\nreturn\n  encode($cov1, \"PNG\")"
     assert str(encode_expr) == expected_query
 
+
 def test_encode_with_params():
     encode_expr = Encode(cov1, "PNG").params('{"compression":"lzw"}')
     expected_query = 'for $cov1 in (cov1)\nreturn\n  encode($cov1, "PNG", "{\\"compression\\":\\"lzw\\"}")'
     assert str(encode_expr) == expected_query
 
+
 def test_encode_no_format():
     with pytest.raises(WCPSClientException):
         str(Encode(cov1))
+
 
 # -------------------------------------------------------------------------------------
 # Switch
