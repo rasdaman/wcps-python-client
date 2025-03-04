@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>wcps.service &#8212; WCPS Python Client 0.1.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=fa44fd50" />
+    <link rel="stylesheet" type="text/css" href="../../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../../_static/alabaster.css?v=27fed22d" />
+    <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
+    <script src="../../_static/documentation_options.js?v=01f34227"></script>
+    <script src="../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+   
+  <link rel="stylesheet" href="../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for wcps.service</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Execute a WCPS query on a WCPS server, and save/return the result.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span> <span class="nn">io</span>
+<span class="kn">import</span> <span class="nn">xml.etree.ElementTree</span> <span class="k">as</span> <span class="nn">ET</span>
+<span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span>
+
+<span class="kn">import</span> <span class="nn">netCDF4</span> <span class="k">as</span> <span class="nn">nc</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">requests</span>
+<span class="kn">from</span> <span class="nn">PIL</span> <span class="kn">import</span> <span class="n">Image</span>
+<span class="kn">from</span> <span class="nn">requests</span> <span class="kn">import</span> <span class="n">HTTPError</span>
+<span class="kn">from</span> <span class="nn">requests.auth</span> <span class="kn">import</span> <span class="n">HTTPBasicAuth</span>
+
+<span class="kn">from</span> <span class="nn">wcps.model</span> <span class="kn">import</span> <span class="n">WCPSExpr</span><span class="p">,</span> <span class="n">WCPSClientException</span><span class="p">,</span> <span class="n">StrEnum</span>
+
+<div class="viewcode-block" id="DEFAULT_CONN_TIMEOUT">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.DEFAULT_CONN_TIMEOUT">[docs]</a>
+<span class="n">DEFAULT_CONN_TIMEOUT</span> <span class="o">=</span> <span class="mi">10</span></div>
+
+<span class="sd">&quot;&quot;&quot;Default timeout to establish a connection to the WCPS service: 10 seconds.&quot;&quot;&quot;</span>
+<div class="viewcode-block" id="DEFAULT_READ_TIMEOUT">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.DEFAULT_READ_TIMEOUT">[docs]</a>
+<span class="n">DEFAULT_READ_TIMEOUT</span> <span class="o">=</span> <span class="mi">10</span> <span class="o">*</span> <span class="mi">60</span></div>
+
+<span class="sd">&quot;&quot;&quot;Default timeout to wait for a query to execute: 10 minutes.&quot;&quot;&quot;</span>
+
+
+<div class="viewcode-block" id="WCPSResultType">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.WCPSResultType">[docs]</a>
+<span class="k">class</span> <span class="nc">WCPSResultType</span><span class="p">(</span><span class="n">StrEnum</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A list of possible WCPS result types.&quot;&quot;&quot;</span>
+<div class="viewcode-block" id="WCPSResultType.SCALAR">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.WCPSResultType.SCALAR">[docs]</a>
+    <span class="n">SCALAR</span> <span class="o">=</span> <span class="s1">&#39;scalar&#39;</span></div>
+
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A scalar value such as 1, 1.55, etc.&quot;&quot;&quot;</span>
+<div class="viewcode-block" id="WCPSResultType.MULTIBAND_SCALAR">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.WCPSResultType.MULTIBAND_SCALAR">[docs]</a>
+    <span class="n">MULTIBAND_SCALAR</span> <span class="o">=</span> <span class="s1">&#39;multiband_scalar&#39;</span></div>
+
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A multiband scalar value is a list of multiple numbers, e.g. [1, 2, 3]&quot;&quot;&quot;</span>
+<div class="viewcode-block" id="WCPSResultType.JSON">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.WCPSResultType.JSON">[docs]</a>
+    <span class="n">JSON</span> <span class="o">=</span> <span class="s1">&#39;json&#39;</span></div>
+
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A JSON list&quot;&quot;&quot;</span>
+<div class="viewcode-block" id="WCPSResultType.IMAGE">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.WCPSResultType.IMAGE">[docs]</a>
+    <span class="n">IMAGE</span> <span class="o">=</span> <span class="s1">&#39;image&#39;</span></div>
+
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;An array encoded to an image data format such as TIFF or PNG.&quot;&quot;&quot;</span>
+<div class="viewcode-block" id="WCPSResultType.NETCDF">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.WCPSResultType.NETCDF">[docs]</a>
+    <span class="n">NETCDF</span> <span class="o">=</span> <span class="s1">&#39;netcdf&#39;</span></div>
+
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;An array encoded to NetCDF.&quot;&quot;&quot;</span>
+<div class="viewcode-block" id="WCPSResultType.NUMPY">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.WCPSResultType.NUMPY">[docs]</a>
+    <span class="n">NUMPY</span> <span class="o">=</span> <span class="s1">&#39;numpy&#39;</span></div>
+
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A numpy array.&quot;&quot;&quot;</span>
+<div class="viewcode-block" id="WCPSResultType.ARRAY">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.WCPSResultType.ARRAY">[docs]</a>
+    <span class="n">ARRAY</span> <span class="o">=</span> <span class="s1">&#39;array&#39;</span></div>
+
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generic array type, unknown data format.&quot;&quot;&quot;</span></div>
+
+
+
+<span class="nd">@dataclass</span>
+<div class="viewcode-block" id="WCPSResult">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.WCPSResult">[docs]</a>
+<span class="k">class</span> <span class="nc">WCPSResult</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Encapsulates a result from executing a WCPS query.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+<div class="viewcode-block" id="WCPSResult.value">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.WCPSResult.value">[docs]</a>
+    <span class="n">value</span><span class="p">:</span> <span class="nb">any</span></div>
+
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The result value: a scalar or list of scalars, a JSON list, or an array (encoded or numpy).&quot;&quot;&quot;</span>
+<div class="viewcode-block" id="WCPSResult.type">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.WCPSResult.type">[docs]</a>
+    <span class="nb">type</span><span class="p">:</span> <span class="n">WCPSResultType</span></div>
+
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The result type.&quot;&quot;&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="Service">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.Service">[docs]</a>
+<span class="k">class</span> <span class="nc">Service</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Establish a connection to a WCPS service, send queries and retrieve results.</span>
+
+<span class="sd">    :param endpoint: the WCPS server endpoint URL, e.g. https://ows.rasdaman.org/rasdaman/ows</span>
+<span class="sd">    :param username: optional username for basic authentication to the WCPS server</span>
+<span class="sd">    :param password: optional password for basic authentication to the WCPS server</span>
+
+<span class="sd">    Example usage: ::</span>
+
+<span class="sd">        service = Service(&quot;https://ows.rasdaman.org/rasdaman/ows&quot;)</span>
+<span class="sd">        query = Datacube(&quot;NIR&quot;).encode(&quot;PNG&quot;)</span>
+
+<span class="sd">        # save the response to a file output.png</span>
+<span class="sd">        service.query(query, output_file=&#39;output.png&#39;)</span>
+<span class="sd">        # or get the response object back</span>
+<span class="sd">        response = service.query(query)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endpoint</span><span class="p">,</span> <span class="n">username</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<div class="viewcode-block" id="Service.endpoint">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.Service.endpoint">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">endpoint</span> <span class="o">=</span> <span class="n">endpoint</span></div>
+
+<div class="viewcode-block" id="Service.endpoint_wcps">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.Service.endpoint_wcps">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">endpoint_wcps</span> <span class="o">=</span> <span class="n">endpoint</span> <span class="o">+</span> <span class="s1">&#39;?service=WCS&amp;version=2.0.1&amp;request=ProcessCoverages&amp;query=&#39;</span></div>
+
+<div class="viewcode-block" id="Service.auth">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.Service.auth">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">auth</span> <span class="o">=</span> <span class="n">HTTPBasicAuth</span><span class="p">(</span><span class="n">username</span><span class="p">,</span> <span class="n">password</span><span class="p">)</span> <span class="k">if</span> <span class="n">username</span> <span class="ow">and</span> <span class="n">password</span> <span class="k">else</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="Service.execute">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.Service.execute">[docs]</a>
+    <span class="k">def</span> <span class="nf">execute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                <span class="n">wcps_query</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">WCPSExpr</span><span class="p">],</span>
+                <span class="n">convert_to_numpy</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                <span class="n">conn_timeout</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">DEFAULT_CONN_TIMEOUT</span><span class="p">,</span>
+                <span class="n">read_timeout</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">DEFAULT_READ_TIMEOUT</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">WCPSResult</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Sends a WCPS query to the service. Depending on the result, it returns:</span>
+
+<span class="sd">        - A single number (int or float) if the result was a single scalar value</span>
+<span class="sd">        - A list of numbers (int or float) if the result was a multiband scalar value</span>
+<span class="sd">        - A JSON array object if the result was a JSON array (the query did encode to &quot;JSON&quot;)</span>
+<span class="sd">        - A string if the result was a CSV array (the query did encode to &quot;CSV&quot;)</span>
+<span class="sd">        - A bytes object if the result was a binary data format, such as TIFF, netCDF, PNG.</span>
+
+<span class="sd">        :param wcps_query: the WCPS query to be executed on the server.</span>
+<span class="sd">        :param convert_to_numpy: if True an *array* result encoded to a data format</span>
+<span class="sd">            will be automatically converted to a numpy array.</span>
+<span class="sd">        :param conn_timeout: how long (seconds) to wait for the connection to be established</span>
+<span class="sd">        :param read_timeout: how long (seconds) to wait for the query to execute</span>
+<span class="sd">        :return: the response object from evaluating the query.</span>
+
+<span class="sd">        :raise: :exc:`wcps.model.WCPSClientException` if the server returns an error status code.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">execute_raw</span><span class="p">(</span><span class="n">wcps_query</span><span class="p">,</span> <span class="n">conn_timeout</span><span class="p">,</span> <span class="n">read_timeout</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">response_to_wcps_result</span><span class="p">(</span><span class="n">response</span><span class="p">,</span> <span class="n">convert_to_numpy</span><span class="o">=</span><span class="n">convert_to_numpy</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Service.download">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.Service.download">[docs]</a>
+    <span class="k">def</span> <span class="nf">download</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                 <span class="n">wcps_query</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">WCPSExpr</span><span class="p">],</span>
+                 <span class="n">output_file</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                 <span class="n">conn_timeout</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">DEFAULT_CONN_TIMEOUT</span><span class="p">,</span>
+                 <span class="n">read_timeout</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">DEFAULT_READ_TIMEOUT</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Sends a WCPS query to the service and save the response into an ``output_file``.</span>
+
+<span class="sd">        :param wcps_query: the WCPS query to be executed on the server.</span>
+<span class="sd">        :param output_file: a path where the response will be written to.</span>
+<span class="sd">        :param conn_timeout: how long (seconds) to wait for the connection to be established</span>
+<span class="sd">        :param read_timeout: how long (seconds) to wait for the query to execute</span>
+<span class="sd">        :return: the response object from evaluating the query.</span>
+
+<span class="sd">        :raise: :exc:`wcps.model.WCPSClientException` if the server returns an error status code.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">output_file</span><span class="p">,</span> <span class="s1">&#39;wb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+            <span class="n">response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">execute_raw</span><span class="p">(</span><span class="n">wcps_query</span><span class="p">,</span> <span class="n">conn_timeout</span><span class="p">,</span> <span class="n">read_timeout</span><span class="p">,</span> <span class="n">stream</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">response</span><span class="o">.</span><span class="n">iter_content</span><span class="p">(</span><span class="n">chunk_size</span><span class="o">=</span><span class="mi">8192</span><span class="p">):</span>
+                <span class="n">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">chunk</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Service.show">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.Service.show">[docs]</a>
+    <span class="k">def</span> <span class="nf">show</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+             <span class="n">query_or_result</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">WCPSExpr</span><span class="p">,</span> <span class="n">WCPSResult</span><span class="p">],</span>
+             <span class="n">conn_timeout</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">DEFAULT_CONN_TIMEOUT</span><span class="p">,</span>
+             <span class="n">read_timeout</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">DEFAULT_READ_TIMEOUT</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Displays the evaluation result of a WCPS query.</span>
+
+<span class="sd">        - 2D image results are shown with :meth:`PIL.Image.Image.show`.</span>
+<span class="sd">        - scalar, JSON, and numpy array results are printed to stdout</span>
+<span class="sd">        - netCDF results print the Dataset information to stdout</span>
+
+<span class="sd">        :param query_or_result: If a WCPS query in string or as a</span>
+<span class="sd">            :class:`wcps.model.WCPSExpr` object is provided, then it will be executed first with</span>
+<span class="sd">            the :meth:`execute` method, and the returned result will be accordingly displayed.</span>
+<span class="sd">            If instead a :class:`WCPSResult` object is provided, it will be just displayed.</span>
+
+<span class="sd">        :param conn_timeout: how long (seconds) to wait for the connection to be established</span>
+<span class="sd">        :param read_timeout: how long (seconds) to wait for the query to execute</span>
+
+<span class="sd">        :raise: :exc:`wcps.model.WCPSClientException` if the server returns an error status code,</span>
+<span class="sd">            or the result cannot be handled.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">query_or_result</span><span class="p">,</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">WCPSExpr</span><span class="p">)):</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">query_or_result</span><span class="p">,</span>
+                                  <span class="n">conn_timeout</span><span class="o">=</span><span class="n">conn_timeout</span><span class="p">,</span> <span class="n">read_timeout</span><span class="o">=</span><span class="n">read_timeout</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">query_or_result</span><span class="p">,</span> <span class="n">WCPSResult</span><span class="p">):</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">query_or_result</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">WCPSClientException</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Cannot handle showing WCPS query or result &#39;</span>
+                                     <span class="sa">f</span><span class="s1">&#39;of type </span><span class="si">{</span><span class="n">query_or_result</span><span class="o">.</span><span class="vm">__class__</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+
+        <span class="n">data</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">value</span>
+
+        <span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">type</span> <span class="ow">in</span> <span class="p">(</span><span class="n">WCPSResultType</span><span class="o">.</span><span class="n">SCALAR</span><span class="p">,</span> <span class="n">WCPSResultType</span><span class="o">.</span><span class="n">JSON</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">result</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="n">WCPSResultType</span><span class="o">.</span><span class="n">MULTIBAND_SCALAR</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;[&#39;</span><span class="p">,</span> <span class="s1">&#39;{&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;]&#39;</span><span class="p">,</span> <span class="s1">&#39;}&#39;</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="n">result</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="n">WCPSResultType</span><span class="o">.</span><span class="n">IMAGE</span><span class="p">:</span>
+            <span class="n">Image</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">io</span><span class="o">.</span><span class="n">BytesIO</span><span class="p">(</span><span class="n">data</span><span class="p">))</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="n">result</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="n">WCPSResultType</span><span class="o">.</span><span class="n">NETCDF</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">nc</span><span class="o">.</span><span class="n">Dataset</span><span class="p">(</span><span class="s2">&quot;memory&quot;</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;r&quot;</span><span class="p">,</span> <span class="n">memory</span><span class="o">=</span><span class="n">data</span><span class="p">)</span> <span class="k">as</span> <span class="n">dataset</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">dataset</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">result</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="n">WCPSResultType</span><span class="o">.</span><span class="n">NUMPY</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">WCPSClientException</span><span class="p">(</span><span class="s2">&quot;Cannot handle showing WCPS result.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Service.execute_raw">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.Service.execute_raw">[docs]</a>
+    <span class="k">def</span> <span class="nf">execute_raw</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                    <span class="n">wcps_query</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">WCPSExpr</span><span class="p">],</span>
+                    <span class="n">conn_timeout</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">DEFAULT_CONN_TIMEOUT</span><span class="p">,</span>
+                    <span class="n">read_timeout</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">DEFAULT_READ_TIMEOUT</span><span class="p">,</span>
+                    <span class="n">stream</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">requests</span><span class="o">.</span><span class="n">Response</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Sends a WCPS query to the service and return the raw :class:`requests.Response` object.</span>
+
+<span class="sd">        The :meth:`execute` and :meth:`download` are more user-friendly methods that return</span>
+<span class="sd">        the response properly interpreted or download to a file.</span>
+
+<span class="sd">        :param wcps_query: the WCPS query to be executed on the server.</span>
+<span class="sd">        :param conn_timeout: how long (seconds) to wait for the connection to be established</span>
+<span class="sd">        :param read_timeout: how long (seconds) to wait for the query to execute</span>
+<span class="sd">        :param stream: allow streaming the query result so it can be downloaded in chunks</span>
+
+<span class="sd">        :return: the response object from evaluating the query.</span>
+
+<span class="sd">        :raise: :exc:`wcps.model.WCPSClientException` if the server returns an error status code.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># prepare request parameters</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">wcps_query</span><span class="p">,</span> <span class="n">WCPSExpr</span><span class="p">):</span>
+            <span class="n">wcps_query</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">wcps_query</span><span class="p">)</span>
+        <span class="n">url</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endpoint_wcps</span> <span class="o">+</span> <span class="n">wcps_query</span>
+
+        <span class="c1"># make request</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">url</span><span class="p">,</span>
+                                <span class="n">auth</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">auth</span><span class="p">,</span>
+                                <span class="n">timeout</span><span class="o">=</span><span class="p">(</span><span class="n">conn_timeout</span><span class="p">,</span> <span class="n">read_timeout</span><span class="p">),</span>
+                                <span class="n">stream</span><span class="o">=</span><span class="n">stream</span><span class="p">)</span>
+
+        <span class="c1"># check for errors from the server</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">response</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span>
+        <span class="k">except</span> <span class="n">HTTPError</span> <span class="k">as</span> <span class="n">ex</span><span class="p">:</span>
+            <span class="n">err</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parse_error_xml</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">err</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">WCPSClientException</span><span class="p">(</span><span class="n">err</span><span class="p">)</span> <span class="kn">from</span> <span class="nn">ex</span>
+            <span class="k">raise</span> <span class="n">ex</span>
+
+        <span class="k">return</span> <span class="n">response</span></div>
+
+
+<div class="viewcode-block" id="Service.response_to_wcps_result">
+<a class="viewcode-back" href="../../autoapi/wcps/service/index.html#wcps.service.Service.response_to_wcps_result">[docs]</a>
+    <span class="k">def</span> <span class="nf">response_to_wcps_result</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                                <span class="n">response</span><span class="p">:</span> <span class="n">requests</span><span class="o">.</span><span class="n">Response</span><span class="p">,</span>
+                                <span class="n">convert_to_numpy</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">WCPSResult</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Converts a :class:`requests.Response` into a :class:`WCPSResult`.</span>
+
+<span class="sd">        :param response: the response to be converted.</span>
+<span class="sd">        :param convert_to_numpy: if True an *array* result encoded to a data format</span>
+<span class="sd">            will be automatically converted to a numpy array.</span>
+<span class="sd">        :return: a :class:`WCPSResult` with the :attr:`WCPSResult.type` set to the</span>
+<span class="sd">            response type, and the :attr:`WCPSResult.value` set to the response value.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">content_type</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;Content-Type&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
+
+        <span class="c1"># json array</span>
+        <span class="k">if</span> <span class="s1">&#39;application/json&#39;</span> <span class="ow">in</span> <span class="n">content_type</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">WCPSResult</span><span class="p">(</span><span class="n">value</span><span class="o">=</span><span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">(),</span> <span class="nb">type</span><span class="o">=</span><span class="n">WCPSResultType</span><span class="o">.</span><span class="n">JSON</span><span class="p">)</span>
+
+        <span class="c1"># single or multiband scalar</span>
+        <span class="k">if</span> <span class="n">content_type</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span> <span class="ow">or</span> <span class="s1">&#39;text/plain&#39;</span> <span class="ow">in</span> <span class="n">content_type</span><span class="p">:</span>
+            <span class="n">content</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">text</span>
+
+            <span class="c1"># single band</span>
+            <span class="k">if</span> <span class="s1">&#39;{&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">content</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">WCPSResult</span><span class="p">(</span><span class="n">value</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_parse_scalar</span><span class="p">(</span><span class="n">content</span><span class="p">),</span> <span class="nb">type</span><span class="o">=</span><span class="n">WCPSResultType</span><span class="o">.</span><span class="n">SCALAR</span><span class="p">)</span>
+
+            <span class="c1"># multiband</span>
+            <span class="n">content</span> <span class="o">=</span> <span class="n">content</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;{&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;}&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
+            <span class="n">scalars</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_parse_scalar</span><span class="p">(</span><span class="n">band</span><span class="p">)</span> <span class="k">for</span> <span class="n">band</span> <span class="ow">in</span> <span class="n">content</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">)]</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">scalars</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">WCPSResult</span><span class="p">(</span><span class="n">value</span><span class="o">=</span><span class="n">scalars</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="n">WCPSResultType</span><span class="o">.</span><span class="n">MULTIBAND_SCALAR</span><span class="p">)</span>
+
+            <span class="k">return</span> <span class="n">WCPSResult</span><span class="p">(</span><span class="n">value</span><span class="o">=</span><span class="n">scalars</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">type</span><span class="o">=</span><span class="n">WCPSResultType</span><span class="o">.</span><span class="n">SCALAR</span><span class="p">)</span>
+
+        <span class="c1"># array result</span>
+        <span class="k">if</span> <span class="s1">&#39;image&#39;</span> <span class="ow">in</span> <span class="n">content_type</span><span class="p">:</span>
+            <span class="n">res_type</span> <span class="o">=</span> <span class="n">WCPSResultType</span><span class="o">.</span><span class="n">IMAGE</span>
+        <span class="k">elif</span> <span class="s1">&#39;netcdf&#39;</span> <span class="ow">in</span> <span class="n">content_type</span><span class="p">:</span>
+            <span class="n">res_type</span> <span class="o">=</span> <span class="n">WCPSResultType</span><span class="o">.</span><span class="n">NETCDF</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">res_type</span> <span class="o">=</span> <span class="n">WCPSResultType</span><span class="o">.</span><span class="n">ARRAY</span>
+
+        <span class="k">if</span> <span class="n">convert_to_numpy</span><span class="p">:</span>
+            <span class="c1"># 2D image formats</span>
+            <span class="k">if</span> <span class="n">res_type</span> <span class="o">==</span> <span class="n">WCPSResultType</span><span class="o">.</span><span class="n">IMAGE</span><span class="p">:</span>
+                <span class="n">image</span> <span class="o">=</span> <span class="n">Image</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">io</span><span class="o">.</span><span class="n">BytesIO</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">content</span><span class="p">))</span>
+                <span class="k">return</span> <span class="n">WCPSResult</span><span class="p">(</span><span class="n">value</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">image</span><span class="p">),</span> <span class="nb">type</span><span class="o">=</span><span class="n">WCPSResultType</span><span class="o">.</span><span class="n">NUMPY</span><span class="p">)</span>
+            <span class="c1"># netcdf</span>
+            <span class="k">if</span> <span class="n">res_type</span> <span class="o">==</span> <span class="n">WCPSResultType</span><span class="o">.</span><span class="n">NETCDF</span><span class="p">:</span>
+                <span class="k">with</span> <span class="n">nc</span><span class="o">.</span><span class="n">Dataset</span><span class="p">(</span><span class="s2">&quot;memory&quot;</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;r&quot;</span><span class="p">,</span> <span class="n">memory</span><span class="o">=</span><span class="n">response</span><span class="o">.</span><span class="n">content</span><span class="p">)</span> <span class="k">as</span> <span class="n">dataset</span><span class="p">:</span>
+
+                    <span class="n">data_arrays</span> <span class="o">=</span> <span class="p">[]</span>
+                    <span class="k">for</span> <span class="n">var_name</span><span class="p">,</span> <span class="n">variable</span> <span class="ow">in</span> <span class="n">dataset</span><span class="o">.</span><span class="n">variables</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                        <span class="k">if</span> <span class="n">var_name</span> <span class="ow">in</span> <span class="n">dataset</span><span class="o">.</span><span class="n">dimensions</span><span class="p">:</span>
+                            <span class="k">continue</span>
+                        <span class="n">ndim</span> <span class="o">=</span> <span class="n">variable</span><span class="o">.</span><span class="n">ndim</span>
+                        <span class="n">data_arrays</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">variable</span><span class="p">[:])</span>
+
+                    <span class="c1"># Stack all arrays along a new dimension</span>
+                    <span class="k">return</span> <span class="n">WCPSResult</span><span class="p">(</span><span class="n">value</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">data_arrays</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="n">ndim</span><span class="p">),</span>
+                                      <span class="nb">type</span><span class="o">=</span><span class="n">WCPSResultType</span><span class="o">.</span><span class="n">NUMPY</span><span class="p">)</span>
+            <span class="c1"># unsupported format</span>
+            <span class="k">raise</span> <span class="n">WCPSClientException</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Cannot convert content-type </span><span class="si">{</span><span class="n">content_type</span><span class="si">}</span><span class="s2"> &quot;</span>
+                                      <span class="sa">f</span><span class="s2">&quot;to a numpy array object.&quot;</span><span class="p">)</span>
+
+        <span class="c1"># no conversion to numpy</span>
+        <span class="k">return</span> <span class="n">WCPSResult</span><span class="p">(</span><span class="n">value</span><span class="o">=</span><span class="n">response</span><span class="o">.</span><span class="n">content</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="n">res_type</span><span class="p">)</span></div>
+
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_parse_scalar</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="nb">bool</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Parse a string into a correctly typed number / bool value.</span>
+<span class="sd">        :param value: a number in string format</span>
+<span class="sd">        :return: a number or boolean value.</span>
+<span class="sd">        :meta private:</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="c1"># Attempt to parse as a boolean</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;t&#39;</span><span class="p">,</span> <span class="s1">&#39;f&#39;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">value</span> <span class="o">==</span> <span class="s1">&#39;t&#39;</span>
+
+        <span class="c1"># Attempt to parse as an integer</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="k">pass</span>
+
+        <span class="c1"># Attempt to parse as a float</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="k">pass</span>
+
+        <span class="k">raise</span> <span class="n">WCPSClientException</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed parsing text response to a scalar number/bool value: &#39;</span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">&#39;&quot;</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_parse_error_xml</span><span class="p">(</span><span class="n">xml_str</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="nb">bytes</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Parse an ows:ExceptionReport returned by the WCPS server to extract the</span>
+<span class="sd">        ows:ExceptionText elements for a human-readable error.</span>
+<span class="sd">        :param xml_str: the error as a string/bytes; may be None.</span>
+<span class="sd">        :return: the extracted error message, or None if xml_str is None</span>
+<span class="sd">        :meta private:</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">xml_str</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">namespaces</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;ows&#39;</span><span class="p">:</span> <span class="s1">&#39;http://www.opengis.net/ows/2.0&#39;</span><span class="p">}</span>
+            <span class="n">root</span> <span class="o">=</span> <span class="n">ET</span><span class="o">.</span><span class="n">fromstring</span><span class="p">(</span><span class="n">xml_str</span><span class="p">)</span>
+            <span class="n">exceptions</span> <span class="o">=</span> <span class="n">root</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="s1">&#39;.//ows:Exception&#39;</span><span class="p">,</span> <span class="n">namespaces</span><span class="p">)</span>
+            <span class="n">ret</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">ex</span> <span class="ow">in</span> <span class="n">exceptions</span><span class="p">:</span>
+                <span class="n">err</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+                <span class="n">ex_code</span> <span class="o">=</span> <span class="n">ex</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;exceptionCode&#39;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">ex_code</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">err</span> <span class="o">=</span> <span class="n">ex_code</span> <span class="o">+</span> <span class="s1">&#39;: &#39;</span>
+                <span class="n">exception_texts</span> <span class="o">=</span> <span class="n">ex</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="s1">&#39;.//ows:ExceptionText&#39;</span><span class="p">,</span> <span class="n">namespaces</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">ex_text</span> <span class="ow">in</span> <span class="n">exception_texts</span><span class="p">:</span>
+                    <span class="n">err</span> <span class="o">+=</span> <span class="n">ex_text</span><span class="o">.</span><span class="n">text</span>
+                <span class="n">ret</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+            <span class="k">return</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">ret</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">ET</span><span class="o">.</span><span class="n">ParseError</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">xml_str</span></div>
+
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../index.html">WCPS Python Client</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../README.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../README.html#installation">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../README.html#examples">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../README.html#contributing">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../README.html#acknowledgments">Acknowledgments</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../index.html">Documentation overview</a><ul>
+  <li><a href="../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, rasdaman team.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>
