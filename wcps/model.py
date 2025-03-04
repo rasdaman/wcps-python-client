@@ -17,8 +17,14 @@ from __future__ import annotations
 
 import re
 from collections import deque
-from enum import StrEnum
+from enum import Enum
 from typing import Union, Optional
+
+
+class StrEnum(str, Enum):
+    """Custom implementation of StrEnum for Python <= 3.10"""
+    def __str__(self) -> str:
+        return self.value
 
 
 class WCPSExpr:

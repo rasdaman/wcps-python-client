@@ -6,7 +6,6 @@ from __future__ import annotations
 import io
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import Optional, Union
 
 import netCDF4 as nc
@@ -16,7 +15,7 @@ from PIL import Image
 from requests import HTTPError
 from requests.auth import HTTPBasicAuth
 
-from wcps.model import WCPSExpr, WCPSClientException
+from wcps.model import WCPSExpr, WCPSClientException, StrEnum
 
 DEFAULT_CONN_TIMEOUT = 10
 """Default timeout to establish a connection to the WCPS service: 10 seconds."""

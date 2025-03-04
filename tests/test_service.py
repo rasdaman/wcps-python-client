@@ -52,7 +52,7 @@ def test_execute():
                  .of_geo_axis(cov["ansi" : "2015-01-01" : "2015-07-01"]))
     max_map = (Condense(CondenseOp.MAX)
                .over(ansi_iter)
-               .where(cov["ansi": ansi_iter.ref()].avg() > 20)
+               .where(cov["ansi": ansi_iter.ref()].Red.avg() > 20)
                .using(cov["ansi": ansi_iter.ref()]))
     query = max_map.encode("PNG")
     result = service.execute(query)
