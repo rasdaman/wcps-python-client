@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 from collections import deque
 from enum import Enum
-from typing import Union, Optional
+from typing import Union, Optional, cast
 
 
 class StrEnum(str, Enum):
@@ -68,9 +68,12 @@ class WCPSExpr:
         expression is a :class:`Mul`, with :class:`Datacube` and :class:`Scalar` operands.
         """
         if operands is not None:
+            ops: list[OperandType]
             if not isinstance(operands, list):
-                operands = [operands]
-            for op in operands:
+                ops = [operands]
+            else:
+                ops = cast(list[OperandType], operands)
+            for op in ops:
                 self.add_operand(op)
 
     def get_datacube_operands(self) -> list[Datacube]:
@@ -90,7 +93,7 @@ class WCPSExpr:
 
         return sorted(list(datacubes), key=lambda datacube: datacube.name)
 
-    def add_operand(self, op: OperandType):
+    def add_operand(self, op: Optional[OperandType]):
         """
         Add an operand to the list of operands. Scalar ``op`` such as 1, 4.9 or
         "test" are automatically wrapped in a :class:`Scalar` object.
@@ -800,20 +803,6 @@ class WCPSExpr:
         """
         return Eq(self, other)
 
-    def __eq__(self, other: OperandType) -> Eq:
-        """
-        Allows the use of the '==' operator to compare two operands.
-
-        :param other: The operand to compare against.
-        :return: An instance of the :class:`Eq` class representing the equality comparison.
-
-        Examples:
-
-        - ``Datacube("test1") == Datacube("test2")``
-        - ``Datacube("test1") == 10``
-        """
-        return Eq(self, other)
-
     def ne(self, other: OperandType) -> Ne:
         """
         Checks if the current operand is not equal to another operand.
@@ -825,19 +814,6 @@ class WCPSExpr:
 
         - ``Datacube("test1").ne(Datacube("test2"))``
         - ``Datacube("test1").ne(10)``
-        """
-        return Ne(self, other)
-
-    def __ne__(self, other: OperandType) -> Ne:
-        """
-        Allows the use of the '!=' operator to compare two operands.
-
-        :param other: The operand to compare against.
-        :return: An instance of the :class:`Ne` class representing the inequality comparison.
-
-        Examples:
-        - Datacube("test1") != Datacube("test2")
-        - Datacube("test1") != 10
         """
         return Ne(self, other)
 
@@ -1080,7 +1056,7 @@ class WCPSExpr:
 
     # reproject
 
-    def reproject(self, target_crs: str, interpolation_method: str = None,
+    def reproject(self, target_crs: str, interpolation_method: Optional[ResampleAlg] = None,
                   axis_resolutions=None, axis_subsets=None, domain_of_coverage=None) -> Reproject:
         """
         Reproject the current object to a new CRS.
@@ -1211,7 +1187,7 @@ class WCPSExpr:
         """
         return Some(self)
 
-    def encode(self, data_format: str = None, format_params: str = None) -> Encode:
+    def encode(self, data_format: Optional[str] = None, format_params: Optional[str] = None) -> Encode:
         """
         Encode a coverage to some ``data_format``. The data format must be specified
         with the ``to(format)`` method if it isn't provided here.
@@ -1281,7 +1257,7 @@ class UnaryOp(WCPSExpr):
     A base class for unary operators, e.g. logical NOT.
     """
 
-    def __init__(self, op: WCPSExpr, operator: str):
+    def __init__(self, op: OperandType, operator: str):
         super().__init__(operands=[op])
         self.operator = operator
 
@@ -1294,7 +1270,7 @@ class BinaryOp(WCPSExpr):
     A base class for binary operators, e.g. logical AND.
     """
 
-    def __init__(self, op1: WCPSExpr, op2: WCPSExpr, operator: str):
+    def __init__(self, op1: OperandType, op2: OperandType, operator: str):
         super().__init__(operands=[op1, op2])
         self.operator = operator
 
@@ -1307,7 +1283,7 @@ class UnaryFunc(WCPSExpr):
     A base class for unary functions, e.g. :class:`Abs`.
     """
 
-    def __init__(self, op: WCPSExpr, func: str):
+    def __init__(self, op: OperandType, func: str):
         super().__init__(operands=[op])
         self.func = func
 
@@ -1320,7 +1296,7 @@ class BinaryFunc(WCPSExpr):
     A base class for binary functions, e.g. :class:`Pow`.
     """
 
-    def __init__(self, op1: WCPSExpr, op2: WCPSExpr, func: str):
+    def __init__(self, op1: OperandType, op2: OperandType, func: str):
         super().__init__(operands=[op1, op2])
         self.func = func
 
@@ -1342,7 +1318,7 @@ class Add(BinaryOp):
     - ``Add(5, Datacube("test1"))``
     """
 
-    def __init__(self, op1: WCPSExpr, op2: WCPSExpr):
+    def __init__(self, op1: OperandType, op2: OperandType):
         super().__init__(op1, op2, '+')
 
 
@@ -1357,7 +1333,7 @@ class Sub(BinaryOp):
     - ``Sub(5, Datacube("test1"))``
     """
 
-    def __init__(self, op1: WCPSExpr, op2: WCPSExpr):
+    def __init__(self, op1: OperandType, op2: OperandType):
         super().__init__(op1, op2, '-')
 
 
@@ -1372,7 +1348,7 @@ class Mul(BinaryOp):
     - ``Mul(5, Datacube("test1"))``
     """
 
-    def __init__(self, op1: WCPSExpr, op2: WCPSExpr):
+    def __init__(self, op1: OperandType, op2: OperandType):
         super().__init__(op1, op2, '*')
 
 
@@ -1387,7 +1363,7 @@ class Div(BinaryOp):
     - ``Div(5, Datacube("test1"))``
     """
 
-    def __init__(self, op1: WCPSExpr, op2: WCPSExpr):
+    def __init__(self, op1: OperandType, op2: OperandType):
         super().__init__(op1, op2, '/')
 
 
@@ -1402,7 +1378,7 @@ class Mod(BinaryFunc):
     - ``Mod(5, Datacube("test1"))``
     """
 
-    def __init__(self, op1: WCPSExpr, op2: WCPSExpr):
+    def __init__(self, op1: OperandType, op2: OperandType):
         super().__init__(op1, op2, 'mod')
 
 
@@ -1416,7 +1392,7 @@ class Abs(UnaryFunc):
     - ``Abs(-5)``
     """
 
-    def __init__(self, op: WCPSExpr):
+    def __init__(self, op: OperandType):
         super().__init__(op, 'abs')
 
 
@@ -1430,7 +1406,7 @@ class Round(UnaryFunc):
     - ``Round(-5.4)``
     """
 
-    def __init__(self, op: WCPSExpr):
+    def __init__(self, op: OperandType):
         super().__init__(op, 'round')
 
 
@@ -1444,7 +1420,7 @@ class Floor(UnaryFunc):
     - ``Floor(-5.4)``
     """
 
-    def __init__(self, op: WCPSExpr):
+    def __init__(self, op: OperandType):
         super().__init__(op, 'floor')
 
 
@@ -1458,7 +1434,7 @@ class Ceil(UnaryFunc):
     - ``Ceil(-5.4)``
     """
 
-    def __init__(self, op: WCPSExpr):
+    def __init__(self, op: OperandType):
         super().__init__(op, 'ceil')
 
 
@@ -1474,7 +1450,7 @@ class Exp(UnaryFunc):
     - ``Exp(Datacube("test1"))``
     """
 
-    def __init__(self, op: WCPSExpr):
+    def __init__(self, op: OperandType):
         super().__init__(op, 'exp')
 
 
@@ -1487,7 +1463,7 @@ class Log(UnaryFunc):
     - ``Log(Datacube("test1"))``
     """
 
-    def __init__(self, op: WCPSExpr):
+    def __init__(self, op: OperandType):
         super().__init__(op, 'log')
 
 
@@ -1500,7 +1476,7 @@ class Ln(UnaryFunc):
     - ``Ln(Datacube("test1"))``
     """
 
-    def __init__(self, op: WCPSExpr):
+    def __init__(self, op: OperandType):
         super().__init__(op, 'ln')
 
 
@@ -1513,7 +1489,7 @@ class Sqrt(UnaryFunc):
     - ``Sqrt(Datacube("test1"))``
     """
 
-    def __init__(self, op: WCPSExpr):
+    def __init__(self, op: OperandType):
         super().__init__(op, 'sqrt')
 
 
@@ -1527,7 +1503,7 @@ class Pow(BinaryFunc):
     - ``Pow(Datacube("test1"), 5)``
     """
 
-    def __init__(self, op1: WCPSExpr, op2: WCPSExpr):
+    def __init__(self, op1: OperandType, op2: OperandType):
         super().__init__(op1, op2, 'pow')
 
 
@@ -1543,7 +1519,7 @@ class Sin(UnaryFunc):
     - ``Sin(Datacube("test1"))``
     """
 
-    def __init__(self, op: WCPSExpr):
+    def __init__(self, op: OperandType):
         super().__init__(op, 'sin')
 
 
@@ -1556,7 +1532,7 @@ class Cos(UnaryFunc):
     - ``Cos(Datacube("test1"))``
     """
 
-    def __init__(self, op: WCPSExpr):
+    def __init__(self, op: OperandType):
         super().__init__(op, 'cos')
 
 
@@ -1569,7 +1545,7 @@ class Tan(UnaryFunc):
     - ``Tan(Datacube("test1"))``
     """
 
-    def __init__(self, op: WCPSExpr):
+    def __init__(self, op: OperandType):
         super().__init__(op, 'tan')
 
 
@@ -1582,7 +1558,7 @@ class Sinh(UnaryFunc):
     - ``Sinh(Datacube("test1"))``
     """
 
-    def __init__(self, op: WCPSExpr):
+    def __init__(self, op: OperandType):
         super().__init__(op, 'sinh')
 
 
@@ -1595,7 +1571,7 @@ class Cosh(UnaryFunc):
     - ``Cosh(Datacube("test1"))``
     """
 
-    def __init__(self, op: WCPSExpr):
+    def __init__(self, op: OperandType):
         super().__init__(op, 'cosh')
 
 
@@ -1608,7 +1584,7 @@ class Tanh(UnaryFunc):
     - ``Tanh(Datacube("test1"))``
     """
 
-    def __init__(self, op: WCPSExpr):
+    def __init__(self, op: OperandType):
         super().__init__(op, 'tanh')
 
 
@@ -1621,7 +1597,7 @@ class ArcSin(UnaryFunc):
     - ``ArcSin(Datacube("test1"))``
     """
 
-    def __init__(self, op: WCPSExpr):
+    def __init__(self, op: OperandType):
         super().__init__(op, 'arcsin')
 
 
@@ -1634,7 +1610,7 @@ class ArcCos(UnaryFunc):
     - ``ArcCos(Datacube("test1"))``
     """
 
-    def __init__(self, op: WCPSExpr):
+    def __init__(self, op: OperandType):
         super().__init__(op, 'arccos')
 
 
@@ -1647,7 +1623,7 @@ class ArcTan(UnaryFunc):
     - ``ArcTan(Datacube("test1"))``
     """
 
-    def __init__(self, op: WCPSExpr):
+    def __init__(self, op: OperandType):
         super().__init__(op, 'arctan')
 
 
@@ -1660,7 +1636,7 @@ class ArcTan2(UnaryFunc):
     - ``ArcTan2(Datacube("test1"))``
     """
 
-    def __init__(self, op: WCPSExpr):
+    def __init__(self, op: OperandType):
         super().__init__(op, 'arctan2')
 
 
@@ -1677,7 +1653,7 @@ class Gt(BinaryOp):
     - ``Gt(Datacube("test1"), 10)``
     """
 
-    def __init__(self, op1: WCPSExpr, op2: WCPSExpr):
+    def __init__(self, op1: OperandType, op2: OperandType):
         super().__init__(op1, op2, '>')
 
 
@@ -1691,7 +1667,7 @@ class Lt(BinaryOp):
     - ``Lt(Datacube("test1"), 10)``
     """
 
-    def __init__(self, op1: WCPSExpr, op2: WCPSExpr):
+    def __init__(self, op1: OperandType, op2: OperandType):
         super().__init__(op1, op2, '<')
 
 
@@ -1705,7 +1681,7 @@ class Ge(BinaryOp):
     - ``Ge(Datacube("test1"), 10)``
     """
 
-    def __init__(self, op1: WCPSExpr, op2: WCPSExpr):
+    def __init__(self, op1: OperandType, op2: OperandType):
         super().__init__(op1, op2, '>=')
 
 
@@ -1719,7 +1695,7 @@ class Le(BinaryOp):
     - ``Le(Datacube("test1"), 10)``
     """
 
-    def __init__(self, op1: WCPSExpr, op2: WCPSExpr):
+    def __init__(self, op1: OperandType, op2: OperandType):
         super().__init__(op1, op2, '<=')
 
 
@@ -1733,7 +1709,7 @@ class Eq(BinaryOp):
     - ``Eq(Datacube("test1"), 10)``
     """
 
-    def __init__(self, op1: WCPSExpr, op2: WCPSExpr):
+    def __init__(self, op1: OperandType, op2: OperandType):
         super().__init__(op1, op2, '=')
 
 
@@ -1747,7 +1723,7 @@ class Ne(BinaryOp):
     - ``Ne(Datacube("test1"), 10)``
     """
 
-    def __init__(self, op1: WCPSExpr, op2: WCPSExpr):
+    def __init__(self, op1: OperandType, op2: OperandType):
         super().__init__(op1, op2, '!=')
 
 
@@ -1764,7 +1740,7 @@ class And(BinaryOp):
     - ``And(Datacube("test1"), True)``
     """
 
-    def __init__(self, op1: WCPSExpr, op2: WCPSExpr):
+    def __init__(self, op1: OperandType, op2: OperandType):
         super().__init__(op1, op2, 'and')
 
 
@@ -1778,7 +1754,7 @@ class Or(BinaryOp):
     - ``Or(Datacube("test1"), False)``
     """
 
-    def __init__(self, op1: WCPSExpr, op2: WCPSExpr):
+    def __init__(self, op1: OperandType, op2: OperandType):
         super().__init__(op1, op2, 'or')
 
 
@@ -1792,7 +1768,7 @@ class Xor(BinaryOp):
     - ``Xor(Datacube("test1"), True)``
     """
 
-    def __init__(self, op1: WCPSExpr, op2: WCPSExpr):
+    def __init__(self, op1: OperandType, op2: OperandType):
         super().__init__(op1, op2, 'xor')
 
 
@@ -1806,7 +1782,7 @@ class Not(UnaryOp):
     - ``Not(True)``
     """
 
-    def __init__(self, op: WCPSExpr):
+    def __init__(self, op: OperandType):
         super().__init__(op, 'not')
 
 
@@ -1822,7 +1798,7 @@ class Overlay(BinaryOp):
     - ``Overlay(Datacube("test1"), Datacube("test2"))``
     """
 
-    def __init__(self, op1: WCPSExpr, op2: WCPSExpr):
+    def __init__(self, op1: OperandType, op2: OperandType):
         super().__init__(op1, op2, 'overlay')
 
 
@@ -1839,7 +1815,7 @@ class Bit(BinaryFunc):
     - ``Bit(Datacube("test1", 5)``
     """
 
-    def __init__(self, op: WCPSExpr, pos: WCPSExpr):
+    def __init__(self, op: OperandType, pos: OperandType):
         super().__init__(op, pos, 'bit')
 
 
@@ -1851,7 +1827,7 @@ class Band(WCPSExpr):
     Select a field (band, channel) from a multiband operand.
     """
 
-    def __init__(self, op: WCPSExpr, field: [str | int]):
+    def __init__(self, op: WCPSExpr, field: Union[str | int]):
         super().__init__(operands=[op])
         self.field = field
 
@@ -1946,8 +1922,9 @@ class Axis(WCPSExpr):
     MIN = '*'
     MAX = '*'
 
-    def __init__(self, axis_name: str, low: BoundType, high: BoundType = None, crs: str = None):
-        super().__init__(operands=[low, high])
+    def __init__(self, axis_name: str, low: BoundType, high: Optional[BoundType] = None, crs: Optional[str] = None):
+        operands = [op for op in [low, high] if op is not None]
+        super().__init__(operands=operands)
         if not axis_name:
             raise WCPSClientException("Axis name must not be empty.")
         self.axis_name = axis_name
@@ -1965,8 +1942,7 @@ class Axis(WCPSExpr):
         return ret
 
     @staticmethod
-    def get_axis_list(axes: Union[Axis, slice, tuple[Axis], AxisTuple, tuple[AxisTuple],
-    tuple[slice], list[Axis], list[AxisTuple]]) -> list[Axis]:
+    def get_axis_list(axes) -> list[Axis]:
         """
         Normalizes ``axes`` into a list of Axis objects.
         :param axes: may be:
@@ -2209,7 +2185,7 @@ class Reproject(WCPSExpr):
     """
 
     def __init__(self, op: WCPSExpr, target_crs: str,
-                 interpolation_method: ResampleAlg = None):
+                 interpolation_method: Optional[ResampleAlg] = None):
         super().__init__(operands=[op])
         self.target_crs: str = self._validate_crs(target_crs)
         self.interpolation_method = self._validate_interpolation_method(interpolation_method)
@@ -2313,7 +2289,7 @@ class Reproject(WCPSExpr):
             raise WCPSClientException("Reproject target_crs cannot be empty.")
         return crs
 
-    def _validate_interpolation_method(self, method: Union[ResampleAlg, str]) -> Union[ResampleAlg, str, None]:
+    def _validate_interpolation_method(self, method: Optional[Union[ResampleAlg, str]]) -> Union[ResampleAlg, str, None]:
         """
         Validate and convert the interpolation method to a ResampleAlg enum.
         :param method: The interpolation method to validate.
@@ -2377,7 +2353,7 @@ class Cast(WCPSExpr):
     - ``Cast(Datacube("test"), CastType.CHAR)``
     """
 
-    def __init__(self, op: OperandType, target_type: Union[CastType, str] = None):
+    def __init__(self, op: OperandType, target_type: Optional[Union[CastType, str]] = None):
         super().__init__(operands=[op])
         self.target_type = self._validate_target_type(target_type)
 
@@ -2398,7 +2374,7 @@ class Cast(WCPSExpr):
         self.target_type = target_type
         return self
 
-    def _validate_target_type(self, target_type: Union[CastType, str]) -> Union[CastType, str, None]:
+    def _validate_target_type(self, target_type: Optional[Union[CastType, str]]) -> Union[CastType, str, None]:
         """
         Validates and converts the target type to a CastType enum.
         :param target_type: The target type to be validated.
@@ -2686,11 +2662,11 @@ class Condense(WCPSExpr):
             .using(cov1[('time', pt_ref)])
     """
 
-    def __init__(self, condense_op: CondenseOp, over: list[AxisIter] = None,
-                 using: WCPSExpr = None, where: WCPSExpr = None):
-        operands = [where, using]
+    def __init__(self, condense_op: CondenseOp, over: Optional[list[AxisIter]] = None,
+                 using: Optional[WCPSExpr] = None, where: Optional[WCPSExpr] = None):
+        operands = [op for op in [where, using] if op is not None]
         if over is not None:
-            operands += over
+            operands.extend(over)
         super().__init__(operands=operands)
         self.condense_op = self._validate_condense_op(condense_op)
         """
@@ -2836,10 +2812,12 @@ class Coverage(WCPSExpr):
                          ('Lon', plon_var.ref())]))
     """
 
-    def __init__(self, name: str, over: list = None,
-                 values_clause: OperandType = None,
-                 value_list_clause: list[ScalarType] = None):
-        operands = [values_clause]
+    def __init__(self, name: str, over: Optional[list] = None,
+                 values_clause: Optional[OperandType] = None,
+                 value_list_clause: Optional[list[ScalarType]] = None):
+        operands = []
+        if values_clause is not None:
+            operands = [values_clause]
         if over is not None:
             operands += over
         super().__init__(operands=operands)
@@ -2901,9 +2879,13 @@ class Coverage(WCPSExpr):
             px_var = AxisIter('$px', 'X').interval(0, 100)
             cov.condense(CondenseOp.PLUS).over(pt_var).over(px_var)
         """
+        var_list: list[AxisIter]
         if not isinstance(iter_var, list):
-            iter_var = [iter_var]
-        for v in iter_var:
+            var_list = [iter_var]
+        else:
+            var_list = cast(list[AxisIter], iter_var)
+
+        for v in var_list:
             self.iter_vars.append(v)
             self.add_operand(v)
         return self
@@ -2955,8 +2937,8 @@ class Switch(WCPSExpr):
 
     def __init__(self):
         super().__init__()
-        self.case_expr: list[WCPSExpr] = []
-        self.then_expr: list[WCPSExpr] = []
+        self.case_expr: list[OperandType] = []
+        self.then_expr: list[OperandType] = []
         self.default_expr = None
 
     def __str__(self):
@@ -2974,7 +2956,7 @@ class Switch(WCPSExpr):
         ret += f' default return {self.default_expr})'
         return ret
 
-    def case(self, case_expr: WCPSExpr) -> Switch:
+    def case(self, case_expr: OperandType) -> Switch:
         """
         Specify a condition expression.
         :param case_expr: the boolean case expression.
@@ -2987,7 +2969,7 @@ class Switch(WCPSExpr):
         self.case_expr.append(case_expr)
         return self
 
-    def then(self, then_expr: WCPSExpr) -> Switch:
+    def then(self, then_expr: OperandType) -> Switch:
         """
         Specify an expression to be evaluated when the previously set ``case`` expression is true.
 
@@ -3003,7 +2985,7 @@ class Switch(WCPSExpr):
         self.then_expr.append(then_expr)
         return self
 
-    def default(self, default_expr: WCPSExpr) -> Switch:
+    def default(self, default_expr: OperandType) -> Switch:
         """
         Specify a default expressions executed when none of the case conditions are satisfied.
 
@@ -3129,7 +3111,7 @@ class Encode(WCPSExpr):
     - ``Encode(Datacube("test"), "GTiff", "...")``
     """
 
-    def __init__(self, op: WCPSExpr, data_format: str = None, format_params: str = None):
+    def __init__(self, op: WCPSExpr, data_format: Optional[str] = None, format_params: Optional[str] = None):
         super().__init__(operands=[op])
         self.data_format = data_format
         self.format_params = format_params
@@ -3176,7 +3158,7 @@ class WCPSClientException(Exception):
     """
 
 
-def _list_to_str(lst: list, sep: str) -> str:
+def _list_to_str(lst: Optional[list], sep: str) -> str:
     """
     Convert a list of items into a single string. Each item is converted to a string
     and separated by a specified separator in the result.
@@ -3188,4 +3170,7 @@ def _list_to_str(lst: list, sep: str) -> str:
     :return: A single string containing all items from the list, separated by the
              specified separator.
     """
-    return sep.join([str(item) for item in lst])
+    if lst is not None:
+        return sep.join([str(item) for item in lst])
+    else:
+        return ""

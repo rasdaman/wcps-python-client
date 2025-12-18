@@ -62,8 +62,8 @@ def test_comparison():
     assert str(cov1 < cov2) == "for $cov1 in (cov1), $cov2 in (cov2)\nreturn\n  ($cov1 < $cov2)"
     assert str(cov1 >= cov2) == "for $cov1 in (cov1), $cov2 in (cov2)\nreturn\n  ($cov1 >= $cov2)"
     assert str(cov1 <= cov2) == "for $cov1 in (cov1), $cov2 in (cov2)\nreturn\n  ($cov1 <= $cov2)"
-    assert str(cov1 == cov2) == "for $cov1 in (cov1), $cov2 in (cov2)\nreturn\n  ($cov1 = $cov2)"
-    assert str(cov1 != cov2) == "for $cov1 in (cov1), $cov2 in (cov2)\nreturn\n  ($cov1 != $cov2)"
+    assert str(cov1.eq(cov2)) == "for $cov1 in (cov1), $cov2 in (cov2)\nreturn\n  ($cov1 = $cov2)"
+    assert str(cov1.ne(cov2)) == "for $cov1 in (cov1), $cov2 in (cov2)\nreturn\n  ($cov1 != $cov2)"
 
 
 def test_logical():

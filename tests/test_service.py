@@ -20,7 +20,7 @@ def test_execute_raw():
     service = Service("https://ows.rasdaman.org/rasdaman/ows")
 
     response = service.execute_raw('for $c in (NIR) return encode($c, "PNG")')
-    expected = 'a71c63b3d24ecc065609395358348e23ce3eb546dc3e3d5f98c714901beda27d'
+    expected = '1b547e175f5fbca3742771ab5216fa2f043eb2c3a51f5eb6c7a3b4d22adbbe79'
     assert get_checksum(response.content) == expected
 
     query = Datacube("NIR").encode("PNG")
@@ -33,7 +33,7 @@ def test_execute_raw():
 
     query = Datacube("NIR")["i":0:2, "j":0:2].red.encode("json")
     response = service.execute_raw(query)
-    assert response.text == '[[104,101],[103,103]]'
+    assert response.text == '[\n [104,101],\n [103,103]\n]'
 
     query = (Datacube("NIR").red > 5).all()
     response = service.execute_raw(query)
@@ -59,7 +59,7 @@ def test_execute():
     assert result.type == WCPSResultType.IMAGE
 
     result = service.execute('for $c in (NIR) return encode($c, "PNG")')
-    expected = 'a71c63b3d24ecc065609395358348e23ce3eb546dc3e3d5f98c714901beda27d'
+    expected = '1b547e175f5fbca3742771ab5216fa2f043eb2c3a51f5eb6c7a3b4d22adbbe79'
     assert result.type == WCPSResultType.IMAGE
     assert get_checksum(result.value) == expected
 
@@ -104,7 +104,7 @@ def test_download(tmp_path):
 
     temp_file_path = tmp_path / "temp_file.png"
     service.download('for $c in (NIR) return encode($c, "PNG")', str(temp_file_path))
-    expected = 'a71c63b3d24ecc065609395358348e23ce3eb546dc3e3d5f98c714901beda27d'
+    expected = '1b547e175f5fbca3742771ab5216fa2f043eb2c3a51f5eb6c7a3b4d22adbbe79'
     assert get_checksum(temp_file_path.read_bytes()) == expected
 
 

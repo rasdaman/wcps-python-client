@@ -6,7 +6,7 @@ from __future__ import annotations
 import io
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Optional, Union, Any
 
 import netCDF4 as nc
 import numpy as np
@@ -46,7 +46,7 @@ class WCPSResult:
     """
     Encapsulates a result from executing a WCPS query.
     """
-    value: any
+    value: Any
     """The result value: a scalar or list of scalars, a JSON list, or an array (encoded or numpy)."""
     type: WCPSResultType
     """The result type."""
@@ -308,7 +308,7 @@ class Service:
         raise WCPSClientException(f"Failed parsing text response to a scalar number/bool value: '{value}'")
 
     @staticmethod
-    def _parse_error_xml(xml_str: Optional[str | bytes]) -> Optional[str]:
+    def _parse_error_xml(xml_str: Optional[str | bytes]) -> Optional[str | bytes]:
         """
         Parse an ows:ExceptionReport returned by the WCPS server to extract the
         ows:ExceptionText elements for a human-readable error.
@@ -330,7 +330,8 @@ class Service:
                     err = ex_code + ': '
                 exception_texts = ex.findall('.//ows:ExceptionText', namespaces)
                 for ex_text in exception_texts:
-                    err += ex_text.text
+                    if ex_text.text is not None:
+                        err += ex_text.text
                 ret.append(err)
             return '\n'.join(ret)
         except ET.ParseError:
