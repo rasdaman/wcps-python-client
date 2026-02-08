@@ -5,4 +5,4 @@
 """
 __title__ = 'wcps'
 __author__ = 'rasdaman team'
-__version__ = "0.5.4"
+__version__ = "0.5.5"

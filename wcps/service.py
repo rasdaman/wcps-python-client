@@ -14,6 +14,7 @@ import requests
 from PIL import Image
 from requests import HTTPError
 from requests.auth import HTTPBasicAuth
+from urllib.parse import quote
 
 from wcps.model import WCPSExpr, WCPSClientException, StrEnum
 
@@ -193,7 +194,7 @@ class Service:
         # prepare request parameters
         if isinstance(wcps_query, WCPSExpr):
             wcps_query = str(wcps_query)
-        url = self.endpoint_wcps + wcps_query
+        url = self.endpoint_wcps + quote(wcps_query)
 
         # make request
         response = requests.get(url,

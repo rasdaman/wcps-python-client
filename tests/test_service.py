@@ -107,6 +107,10 @@ def test_download(tmp_path):
     expected = '1b547e175f5fbca3742771ab5216fa2f043eb2c3a51f5eb6c7a3b4d22adbbe79'
     assert get_checksum(temp_file_path.read_bytes()) == expected
 
+    service.download('for $c in (NIR) return encode($c + 1, "PNG")', str(temp_file_path))
+    expected = '9ba23169475814e4b8dfb444319062370a5fd11f7bfefbfab469daa2ef437a54'
+    assert get_checksum(temp_file_path.read_bytes()) == expected
+
 
 def test_execute_error():
     cov = Datacube("S2_L2A")["time", "2025-01-15"]
