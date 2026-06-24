@@ -511,6 +511,9 @@ service = Service("https://ows.rasdaman.org/rasdaman/ows")
 service.show(stretched)
 ```
 
+To list all available WCPS UDFs use the `service.list_udfs()` method.
+
+
 # Contributing
 
 The directory structure is as follows:

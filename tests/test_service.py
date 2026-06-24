@@ -127,3 +127,15 @@ def test_execute_error():
     with pytest.raises(Exception) as e_info:
         service.execute(query)
         assert e_info.value == "NoSuchCoverage: Coverage 'S2_L2A' does not exist."
+
+def test_list_udfs():
+    service = Service("https://ows.rasdaman.org/rasdaman/ows")
+    result = service.list_udfs()
+    assert result is not None
+    ok = 'Stddev_pop' in result
+    assert ok
+
+# def test_list_udfs_none():
+#     service = Service("http://localhost:8080/rasdaman/ows")
+#     result = service.list_udfs()
+#     assert result is None

@@ -280,6 +280,37 @@ class Service:
 
         # no conversion to numpy
         return WCPSResult(value=response.content, type=res_type)
+    
+    def list_udfs(self) -> Optional[str]:
+        """
+        List available WCPS UDFs if the service supports UDFs.
+
+        :return: available WCPS UDFs as a single string, None if the WCPS service does
+            not have UDF API.
+        """
+        url = self.endpoint
+        while url.endswith('/'):
+            url = url[:-1]
+        if url.endswith('/ows'):
+            url = url[:-4]
+        url += '/admin/udf/list?type=wcps'
+
+        # make request
+        response = requests.get(url, auth=self.auth)
+
+        # check for errors from the server
+        try:
+            response.raise_for_status()
+        except HTTPError as ex:
+            status_code = ex.response.status_code
+            if status_code == 404:
+                return None
+            err = self._parse_error_xml(response.text)
+            if err is not None:
+                raise WCPSClientException(err) from ex
+            raise ex
+
+        return response.text
 
     @staticmethod
     def _parse_scalar(value: str) -> Union[int | float | bool]:
