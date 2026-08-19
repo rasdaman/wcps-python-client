@@ -5,6 +5,7 @@ Test the wcps.service module.
 from hashlib import sha256
 
 import pytest
+import requests
 
 from wcps.model import Datacube, AxisIter, Condense, CondenseOp
 from wcps.service import Service, WCPSResultType
@@ -14,6 +15,18 @@ def get_checksum(response: bytes):
     hash_func = sha256()
     hash_func.update(response)
     return hash_func.hexdigest()
+
+
+def make_text_response(text: str, content_type: str = 'text/plain') -> requests.Response:
+    """
+    Build a canned :class:`requests.Response` with the given text body, without any
+    network access, so that only the result parsing can be tested.
+    """
+    response = requests.Response()
+    response.status_code = 200
+    response.headers['Content-Type'] = content_type
+    response._content = text.encode('utf-8')
+    return response
 
 
 def test_execute_raw():
@@ -127,6 +140,35 @@ def test_execute_error():
     with pytest.raises(Exception) as e_info:
         service.execute(query)
         assert e_info.value == "NoSuchCoverage: Coverage 'S2_L2A' does not exist."
+
+def test_execute_null_multiband_scalar():
+    """
+    A query such as::
+
+        for $c in (mean_summer_airtemp)
+        return {
+          extended_point: extend($c[Lat(-35:-25), Lon(120:140)], {Lat(-40:-20), Lon(115:145)})[Lat(-38), Lon(117)],
+          original_point: extend($c[Lat(-35:-25), Lon(120:140)], {Lat(-40:-20), Lon(115:145)})[Lat(-30), Lon(130)]
+        }
+
+    returns the text ``{ NULL, 0 }`` when one of the bands evaluates to NULL.
+    The parser must not raise and must convert NULL to None.
+    """
+    service = Service("https://ows.rasdaman.org/rasdaman/ows")
+    response = make_text_response('{ NULL, 0 }')
+    result = service.response_to_wcps_result(response)
+    assert result.type == WCPSResultType.MULTIBAND_SCALAR
+    assert result.value == [None, 0]
+
+
+def test_execute_null_scalar():
+    """A single-band result of NULL must parse to None."""
+    service = Service("https://ows.rasdaman.org/rasdaman/ows")
+    response = make_text_response('NULL')
+    result = service.response_to_wcps_result(response)
+    assert result.type == WCPSResultType.SCALAR
+    assert result.value is None
+
 
 def test_list_udfs():
     service = Service("https://ows.rasdaman.org/rasdaman/ows")

@@ -313,14 +313,18 @@ class Service:
         return response.text
 
     @staticmethod
-    def _parse_scalar(value: str) -> Union[int | float | bool]:
+    def _parse_scalar(value: str) -> Optional[int | float | bool]:
         """
         Parse a string into a correctly typed number / bool value.
         :param value: a number in string format
-        :return: a number or boolean value.
+        :return: a number or boolean value, or None if the value is NULL.
         :meta private:
         """
         value = value.strip()
+        # NULL value
+        if value == 'NULL':
+            return None
+
         # Attempt to parse as a boolean
         if value in ('t', 'f'):
             return value == 't'
