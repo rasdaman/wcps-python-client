@@ -170,6 +170,35 @@ def test_execute_null_scalar():
     assert result.value is None
 
 
+def test_execute_domain_result():
+    """
+    A query such as::
+
+        for $c in (mean_summer_airtemp)
+        return domain($c)
+
+    returns a spatial domain such as
+    ``Lat(-44.524999999999987:-8.974999999999987),Lon(111.975:156.27500000000000886)``.
+    The parser must not raise and must return the raw text as a TEXT result.
+    """
+    service = Service("https://ows.rasdaman.org/rasdaman/ows")
+    domain_text = 'Lat(-44.524999999999987:-8.974999999999987),Lon(111.975:156.27500000000000886)'
+    response = make_text_response(domain_text)
+    result = service.response_to_wcps_result(response)
+    assert result.type == WCPSResultType.TEXT
+    assert result.value == domain_text
+
+
+def test_execute_unparseable_multiband_result():
+    """A multiband text result with non-scalar bands must fall back to raw TEXT."""
+    service = Service("https://ows.rasdaman.org/rasdaman/ows")
+    domain_text = 'Lat(-44.524999999999987:-8.974999999999987),Lon(111.975:156.27500000000000886)'
+    response = make_text_response('{ ' + domain_text + ' }')
+    result = service.response_to_wcps_result(response)
+    assert result.type == WCPSResultType.TEXT
+    assert result.value == '{ ' + domain_text + ' }'
+
+
 def test_list_udfs():
     service = Service("https://ows.rasdaman.org/rasdaman/ows")
     result = service.list_udfs()

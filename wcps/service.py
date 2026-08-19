@@ -36,6 +36,8 @@ class WCPSResultType(StrEnum):
     """An array encoded to an image data format such as TIFF or PNG."""
     NETCDF = 'netcdf'
     """An array encoded to NetCDF."""
+    TEXT = 'text'
+    """Arbitrary text result that is not a scalar, e.g. a spatial domain."""
     NUMPY = 'numpy'
     """A numpy array."""
     ARRAY = 'array'
@@ -89,6 +91,8 @@ class Service:
         - A list of numbers (int or float) if the result was a multiband scalar value
         - A JSON array object if the result was a JSON array (the query did encode to "JSON")
         - A string if the result was a CSV array (the query did encode to "CSV")
+        - A string if the result was arbitrary text that is not a scalar, e.g. a
+          spatial domain (result type :attr:`WCPSResultType.TEXT`)
         - A bytes object if the result was a binary data format, such as TIFF, netCDF, PNG.
 
         :param wcps_query: the WCPS query to be executed on the server.
@@ -157,7 +161,7 @@ class Service:
 
         data = result.value
 
-        if result.type in (WCPSResultType.SCALAR, WCPSResultType.JSON):
+        if result.type in (WCPSResultType.SCALAR, WCPSResultType.JSON, WCPSResultType.TEXT):
             print(data)
         elif result.type == WCPSResultType.MULTIBAND_SCALAR:
             print(str(data).replace('[', '{').replace(']', '}'))
@@ -237,11 +241,19 @@ class Service:
 
             # single band
             if '{' not in content:
-                return WCPSResult(value=self._parse_scalar(content), type=WCPSResultType.SCALAR)
+                try:
+                    return WCPSResult(value=self._parse_scalar(content), type=WCPSResultType.SCALAR)
+                except WCPSClientException:
+                    # not a scalar, e.g. a spatial domain: return the raw text
+                    return WCPSResult(value=content, type=WCPSResultType.TEXT)
 
             # multiband
             content = content.replace('{', '').replace('}', '')
-            scalars = [self._parse_scalar(band) for band in content.split(',')]
+            try:
+                scalars = [self._parse_scalar(band) for band in content.split(',')]
+            except WCPSClientException:
+                # contains non-scalar bands, e.g. a spatial domain: return the raw text
+                return WCPSResult(value=response.text, type=WCPSResultType.TEXT)
             if len(scalars) > 1:
                 return WCPSResult(value=scalars, type=WCPSResultType.MULTIBAND_SCALAR)
 
@@ -280,7 +292,7 @@ class Service:
 
         # no conversion to numpy
         return WCPSResult(value=response.content, type=res_type)
-    
+
     def list_udfs(self) -> Optional[str]:
         """
         List available WCPS UDFs if the service supports UDFs.
