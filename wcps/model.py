@@ -1018,7 +1018,8 @@ class WCPSExpr:
 
     def scale(self, grid_axes=None, another_coverage=None, single_factor=None, axis_factors=None) -> Scale:
         """
-        Up or down-scale the current object. Exactly one of the parameters must be specified.
+        Up or down-scale the current object with nearest-neighbour interpolation.
+        Exactly one of the parameters must be specified.
 
         :param grid_axes: rescale to the grid bounds specified for each axis
         :param another_coverage: rescale to the domain of another coverage operand
@@ -1063,7 +1064,8 @@ class WCPSExpr:
 
         :param target_crs: the new CRS, e.g. "EPSG:4326"
         :param interpolation_method: an optional interpolation method, one of the constants
-            defined by :class:`ResampleAlg`, e.g. :const:`ResampleAlg.BILINEAR`
+            defined by :class:`ResampleAlg`, e.g. :const:`ResampleAlg.BILINEAR`;
+            by default it's nearest-neighbour interpolation if not set.
         :param axis_resolutions: optional list of target axis resolutions to
             maintain in the reprojected result
         :param axis_subsets: crop the result by the specified axis subsets (same syntax as for ``subset(axes)``)
