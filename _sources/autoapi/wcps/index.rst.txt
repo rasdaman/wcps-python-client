@@ -1,0 +1,24 @@
+wcps
+====
+
+.. py:module:: wcps
+
+.. autoapi-nested-parse::
+
+   - :mod:`wcps.model` contains classes for dynamically building WCPS queries.
+   - :mod:`wcps.service` allows to execute queries on a WCPS server.
+   - :mod:`wcps.spectral` defines classes to automatically compute any of over 200 spectral indices.
+
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /autoapi/wcps/model/index
+   /autoapi/wcps/service/index
+   /autoapi/wcps/spectral/index
+
+
